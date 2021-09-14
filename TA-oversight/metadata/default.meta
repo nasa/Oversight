@@ -1,0 +1,10 @@
+# Application-level permissions
+# http://dev.splunk.com/view/webframework-developapps/SP-CAAAE88
+
+[]
+access = read : [ * ], write : [ admin  ]
+export = none
+owner = admin
+
+[transforms]
+export = system
