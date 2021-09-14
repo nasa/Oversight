@@ -1,0 +1,7 @@
+coverage
+pytest<6.1.0
+pytest-cov
+pytest-splunk-addon[docker]
+pylint
+pyfakefs
+pytest-mock

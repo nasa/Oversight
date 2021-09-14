@@ -1,0 +1,15 @@
+<input>
+    <server_host>tiny</server_host>
+    <server_uri>https://127.0.0.1:8089</server_uri>
+    <checkpoint_dir>/some/dir</checkpoint_dir>
+    <session_key>123102983109283019283</session_key>
+    <configuration>
+        <stanza name="oversight://test">
+            <param name="asset_group">group1</param>
+            <param name="id_field">host</param>
+            <param name="name">test</param>
+            <param name="aggregation_fields"></param>
+            <param name="enrichment_fields"></param>
+        </stanza>
+    </configuration>
+</input>
