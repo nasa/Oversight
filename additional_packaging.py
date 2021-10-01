@@ -27,6 +27,31 @@ def additional_packaging(ta_name):
             
         print("additional_packaging:done with file")
     
+        ## add 'interval' as a key for the modular input so it can be set as a default value
+        ## since we ONLY want the modular input to execute once        
+        # add 'index' as a key because it is required for modular input but we dont want the other to have to select 
+        # it and since we don't use it, it doesn't matter what it is.
+        # listing both here allows us to specify a default value in inputs.conf
+
+        """
+        inputs_conf_spec = 'output/{}/README/inputs.conf.spec'.format(ta_name)
+        append_text = '\ninterval = build script execution schedule\nindex = required by splunk but not used'.encode("utf-8")
+        with open(inputs_conf_spec, 'a+b') as file1:
+            print("opened {}".format(file1.name))
+            file1.write(append_text)
+            file1.truncate()
+            
+            print("appended text: {} to file: {}".format(str(append_text), str(inputs_conf_spec)))
+            # append python.version = python3 if it is not already present
+            append_text = '\npython.version = python3'.encode('utf-8')
+            file1.seek(0)
+            content = file1.read().decode("utf-8")
+            if 'python.version' not in content:
+                file1.write(append_text)
+            file1.truncate()
+            file1.close() """
+        
+            # print("appended text: {} to file: {}".format(str(append_text), str(inputs_conf_spec)))
         ## add import statement
         oversight_file = 'output/{}/bin/oversight.py'.format(ta_name)
         

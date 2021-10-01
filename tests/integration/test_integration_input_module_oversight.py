@@ -51,7 +51,6 @@ class TASetup(object):
     def get_oneshot_results(self, search_query, key_field=None):
         # https://docs.splunk.com/DocumentationStatic/PythonSDK/1.6.13/client.html
         output_list = []
-        output_dict = {}
         service = client.connect(**self.splunk)
         for _ in range(30):
             rr = results.ResultsReader(service.jobs.oneshot(search_query))
@@ -319,6 +318,56 @@ def test_simple_input_example(splunk_setup):
     )
     assert "syslog2_hosts" in service.saved_searches
     splunk_setup.delete_input_kos("syslog2")
+
+
+def test_generating_input_example(splunk_setup):
+
+    # load required configurations
+    input_name = "tstats_foo"
+    input_parameters = {
+        "cron": "0 23 * * *",
+        "id_field": "ip",
+        "inventory_source": "1",
+        "replicate": "0",
+        "source_expression": "|tstats count by sourcetype",
+        "source_fields": "log_level",
+        "aggregation_fields": "log_level",
+    }
+    service = client.connect(**splunk_setup.splunk)
+    print(service.inputs.kinds)
+    if "input_name" not in service.inputs:
+        splunk_setup.add_input_stanza(
+            name=input_name, kind="oversight", **input_parameters
+        )
+    else:
+        service.inputs[input_name].post(**input_parameters)
+
+    time.sleep(20)
+    search = """ search index=_internal input={} sourcetype=oversight:log earliest=-5m@m | table _time _raw""".format(input_name)
+    wait_for_completion = splunk_setup.get_blocking_search_results(search)
+    assert wait_for_completion is not None
+    pp(wait_for_completion)
+
+    print("audit log")
+    audit_log = splunk_setup.get_blocking_search_results(
+        "search index=_internal (ERROR sourcetype=splunkd oversight) OR sourcetype=oversight:log | eventstats max(run_id) as most_recent_runid |fillnull value=0 run_id| where run_id == most_recent_runid  OR run_id==0 | table _time _raw"
+    )
+    pp(audit_log)
+
+    ## validate results
+    assert "{}_lookup".format(input_name) in service.confs["transforms"]
+    assert "{}_collection".format(input_name) in service.kvstore
+    assert (
+        "{}_last_inventoried".format(input_name)
+        in service.confs["transforms"]["hosts_lookup"].content()["fields_list"]
+    )
+    assert (
+        "{}_last_inventoried".format(input_name)
+        in service.confs["transforms"]["hosts_lookup_all"].content()["fields_list"]
+    )
+    assert "{}_hosts".format(input_name) in service.saved_searches
+    splunk_setup.delete_input_kos(input_name)
+
 
 
 test_data = [

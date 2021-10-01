@@ -238,9 +238,13 @@ class InventoryUpdater(OversightScript):
             raise ValueError(
                 "run_id={} source_name parameter missing, aborting".format(self.run_id)
             )
-        self.logger.debug("run_id={} script={} method=validate_alert_arguments status=exiting source_name={}".format(
-            self.run_id, self.SCRIPT_NAME, payload["configuration"].get("source_name")
-        ))
+        self.logger.debug(
+            "run_id={} script={} method=validate_alert_arguments status=exiting source_name={}".format(
+                self.run_id,
+                self.SCRIPT_NAME,
+                payload["configuration"].get("source_name"),
+            )
+        )
 
     @log_enter_exit()
     def aggregate_event(self, input_event, output_event, output_key):
@@ -298,6 +302,17 @@ class InventoryUpdater(OversightScript):
     # do not log payload directly it includes a token and splunk URI (sensitive)
     def setup_attributes(self, service, payload, app_settings, input_settings):
         """set InventoryUpdater attributes from app settings and input settings"""
+        self.logger.debug(
+            "run_id={} script={} input={} method={} status={} app_settings={} input_settings={}".format(
+                self.run_id,
+                self.SCRIPT_NAME,
+                self.source_name,
+                "setup_attributes",
+                "entered",
+                str(app_settings),
+                str(input_settings),
+            )
+        )
         super().setup(service, app_settings)
 
         self.TIME_FORMAT = app_settings["additional_parameters"].get("time_format")
@@ -365,7 +380,7 @@ class InventoryUpdater(OversightScript):
         self.aggregation_fields = self.get_normalized_fieldlist(
             input_settings.get("aggregation_fields")
         )
-        self.id_field = input_settings.get("id_rename_field") or input_settings.get(
+        self.id_field = input_settings.get("id_field_rename") or input_settings.get(
             "id_field"
         )
 
@@ -379,10 +394,45 @@ class InventoryUpdater(OversightScript):
                 self.source_name,
             )
         )
+        if self.AGGREGATED_COLLECTION_NAME in self.service.kvstore:
 
-        self.aggregated_collection = self.service.kvstore[
-            self.AGGREGATED_COLLECTION_NAME
-        ]
+            self.aggregated_collection = self.service.kvstore[
+                self.AGGREGATED_COLLECTION_NAME
+            ]
+        else:
+            self.logger.error(
+                "run_id={} script={} input={} method={} status={}".format(
+                    self.run_id,
+                    self.SCRIPT_NAME,
+                    self.source_name,
+                    "setup_attributes",
+                    "could not connect to aggregated collection name, check {} exists in collections.conf".format(
+                        self.AGGREGATED_COLLECTION_NAME
+                    ),
+                )
+            )
+        self.logger.debug(
+            "run_id={} script={} input={} method={} status={} attributes={}".format(
+                self.run_id,
+                self.SCRIPT_NAME,
+                self.source_name,
+                "setup_attributes",
+                "exited",
+                str(
+                    {
+                        "TIME_FORMAT": self.TIME_FORMAT,
+                        "loglevel": loglevel,
+                        "last_checkin_source_field": self.last_checkin_source_field,
+                        "asset_group": self.asset_group,
+                        "aggregation_fields": self.aggregation_fields,
+                        "id_field": self.id_field,
+                        "mv_id_field": self.mv_id_field,
+                        "mv_key_field": self.mv_key_field,
+                        "aggregated_collection": self.aggregated_collection.name,
+                    }
+                ),
+            )
+        )
 
     def validate_input_event(self, event):
         """return True if event has all required fields"""
@@ -596,9 +646,11 @@ class InventoryUpdater(OversightScript):
         # get information about the source being aggregated
         # beware permission issues if changing this statement
         self.source_name = payload["configuration"].get("source_name")
-        self.logger.debug("""run_id={} script={} input={} status="loading input definition" """.format(
-            self.run_id, self.SCRIPT_NAME, self.source_name
-        ))
+        self.logger.debug(
+            """run_id={} script={} input={} status="loading input definition" """.format(
+                self.run_id, self.SCRIPT_NAME, self.source_name
+            )
+        )
         try:
             input_settings = [
                 i.content
@@ -606,12 +658,23 @@ class InventoryUpdater(OversightScript):
                 if i.name == self.source_name
             ][0]
         except IndexError:
-            self.logger.critical("""run_id={} script={} input={} status=failed reason="could not load input definition.  Please try to EDIT and SAVE this input definition. Aborting execution." """.format(
-                self.run_id, self.SCRIPT_NAME, self.source_name
-            ))
+            self.logger.critical(
+                """run_id={} script={} input={} status=failed reason="could not load input definition.  Please try to EDIT and SAVE this input definition. Aborting execution." """.format(
+                    self.run_id, self.SCRIPT_NAME, self.source_name
+                )
+            )
             sys.exit(1)
 
         self.setup_attributes(self.service, payload, app_settings, input_settings)
+        self.logger.debug(
+            "run_id={} script={} input={} input_settings={} app_settings={}".format(
+                self.run_id,
+                self.SCRIPT_NAME,
+                self.source_name,
+                str(input_settings),
+                str(app_settings),
+            )
+        )
         base_fields = self.get_base_fields()
 
         self.logger.debug(
@@ -778,9 +841,13 @@ class InventoryUpdater(OversightScript):
         ]
         records_batch_2 = [value for value in phase_one_records.values() if value]
         if len(records_batch_1) > 0:
-            self.handle_cached_write(records=records_batch_1, force=True)
+            self.handle_cached_write(
+                self.AGGREGATED_COLLECTION_NAME, records=records_batch_1, force=True
+            )
         if len(records_batch_2) > 0:
-            self.handle_cached_write(records=records_batch_2, force=True)
+            self.handle_cached_write(
+                self.AGGREGATED_COLLECTION_NAME, records=records_batch_2, force=True
+            )
         self.logger.debug(
             "run_id={} input={} forcing a cached write".format(
                 self.run_id, self.source_name
@@ -798,7 +865,7 @@ class InventoryUpdater(OversightScript):
         return True
 
 
-## https://localhost:8089/servicesNS/nobody/Oversight/storage/collections/data/hosts_collection
+## https://localhost:8089/servicesNS/nobody/TA-oversight/storage/collections/data/hosts_collection
 
 if __name__ == "__main__":
     if len(sys.argv) < 2 or sys.argv[1] != "--execute":

@@ -1,0 +1,165 @@
+<dashboard version="1.1">
+  <label>Ingest Rates</label>
+  <row>
+    <panel>
+      <title>Hosts per Per Day, Last 14 Days</title>
+      <single>
+        <search>
+          <query>index=_internal sourcetype=scheduler app=TA-oversight earliest=-14d@d 
+| eval _time=dispatch_time 
+| table result_count, savedsearch_name, _time 
+| search 
+    [| inputlookup hosts_lookup
+    | fieldsummary 
+    | fields field 
+    | search field=*_last_inventoried 
+    | eval savedsearch_name=replace(field, "_last_inventoried", "_hosts") 
+    | fields savedsearch_name] 
+| timechart sum(result_count) by savedsearch_name</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="colorMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="rangeValues">[0,30,70,100]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="showSparkline">1</option>
+        <option name="showTrendIndicator">1</option>
+        <option name="trellis.enabled">1</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+        <option name="trellis.splitBy">savedsearch_name</option>
+        <option name="trendColorInterpretation">standard</option>
+        <option name="trendDisplayMode">absolute</option>
+        <option name="unitPosition">after</option>
+        <option name="useColors">0</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Data Freshness</title>
+      <html depends="$alwaysHideCSS$">
+         <style>
+            #table1 th, #table1 td {
+              text-align: center!important;
+            }
+            #table1_colors table {
+              border-collapse: collapse;
+            }
+            
+            #table1_colors th, #table1_colors td {
+              text-align: center!important;
+            }
+            
+            #table1_colors tr td {
+              font-size: medium;
+              color: black;
+            }
+            
+            #table1_colors td:nth-child(even){
+              border-left: 5px solid #fff;
+              border-right: 5px solid #fff;
+            }
+            
+            #table2 th, #table2 td {
+              text-align: center!important;
+            }
+            
+            #table3 table {
+              border-collapse: collapse;
+            }
+            
+            #table3 th, #table3 td {
+              text-align: center!important;
+            }
+            
+            #table3 tr td {
+              font-size: large;
+              color: black;
+            }
+            
+            #table3 td:nth-child(even){
+              border-left: 5px solid #fff;
+              border-right: 5px solid #fff;
+            }
+         </style>
+      </html>
+      <table id="table1_colors">
+        <search>
+          <query>
+`source1_source` 
+| head 1 
+| table * 
+| `eval_last_inventoried`
+| eval source1=strptime(last_inventoried, "%Y-%m-%d %H:%M")
+| eval source1=strftime(source1, "%Y-%m-%d") 
+| fields source1 
+| fields - _raw, _time 
+| eval 
+    [| search `source2_source` 
+    | head 1 
+    | `eval_last_inventoried`
+    | eval source2=strptime(last_inventoried, "%Y-%m-%d %H:%M")
+    | eval source2=strftime(source2, "%Y-%m-%d") 
+    | return source2 ] 
+| eval 
+    [| search `source3_source` 
+    | head 1 
+    | `eval_last_inventoried`
+    | eval source3=strptime(last_inventoried, "%Y-%m-%d %H:%M")
+    | eval source3=strftime(source3, "%Y-%m-%d") 
+    | return source3 ] 
+| eval type="Splunk Ingested (Date)" 
+| table type, * 
+| append 
+    [| inputlookup hosts_lookup 
+    | stats max(source1_last_inventoried) as source1, max(source2_last_inventoried) as source2, max(source3_last_inventoried) as source3
+    | foreach * 
+        [| eval &lt;&lt;MATCHSTR&gt;&gt;_delta =round(now() - strptime(&lt;&lt;FIELD&gt;&gt;, "%Y-%m-%d %H:%M"),0) 
+        | eval &lt;&lt;MATCHSTR&gt;&gt;_hours=tostring(floor(&lt;&lt;MATCHSTR&gt;&gt;_delta/(3600))) 
+            ] 
+    | fields - *_delta, *_hours 
+    | foreach * 
+        [| eval &lt;&lt;MATCHSTR&gt;&gt;_epoch = strptime(&lt;&lt;FIELD&gt;&gt;, "%Y-%m-%d %H:%M") 
+        | eval &lt;&lt;MATCHSTR&gt;&gt; = strftime(&lt;&lt;MATCHSTR&gt;&gt;_epoch, "%Y-%m-%d") ] 
+    | fields - *_epoch 
+    | eval type="Oversight Processed (Date)"] 
+| append 
+    [| inputlookup hosts_lookup
+    | stats max(source1_last_inventoried) as source1, max(source2_last_inventoried) as source2, max(source3_last_inventoried) as source3
+    | foreach * 
+        [| eval &lt;&lt;MATCHSTR&gt;&gt;_delta =round(now() - strptime(&lt;&lt;FIELD&gt;&gt;, "%Y-%m-%d %H:%M"),0) 
+        | eval &lt;&lt;MATCHSTR&gt;&gt;_hours=tostring(floor(&lt;&lt;MATCHSTR&gt;&gt;_delta/(3600))) 
+            ] 
+    | table *_hours 
+    | rename *_hours as * 
+    | eval type="Oversight Processed (Hours)"] 
+| table type, *</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="wrap">false</option>
+        <format type="color" field="source1">
+          <colorPalette type="list">[#AF575A,#53A051,#F8BE34,#F1813F,#AF575A]</colorPalette>
+          <scale type="threshold">0,25,49,73</scale>
+        </format>
+        <format type="color" field="source2">
+          <colorPalette type="list">[#AF575A,#53A051,#F8BE34,#F1813F,#AF575A]</colorPalette>
+          <scale type="threshold">0,25,49,73</scale>
+        </format>
+        <format type="color" field="source3">
+          <colorPalette type="list">[#AF575A,#53A051,#F8BE34,#F1813F,#AF575A]</colorPalette>
+          <scale type="threshold">0,25,49,73</scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+</dashboard>

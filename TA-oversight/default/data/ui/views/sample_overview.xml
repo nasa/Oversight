@@ -1,0 +1,129 @@
+<form version="1.1">
+  <label>Overview</label>
+  <description>| inputlookup hosts_lookup</description>
+  <search id="hosts_lookup">
+    <query>| inputlookup hosts_lookup
+| fillnull value="NULL"
+| eval source1 = if(match(source1_last_inventoried, "NULL"), "NULL", "source1") 
+| eval source2 = if(match(source2_last_inventoried, "NULL"), "NULL", "source2") 
+| eval source3 = if(match(source3_status_last_inventoried, "NULL"), "NULL", "source3") 
+ </query>
+  </search>
+  <fieldset submitButton="false">
+    <input type="dropdown" token="source1" searchWhenChanged="true">
+      <label>Source1</label>
+      <choice value="source1">Yes</choice>
+      <choice value="NULL">No</choice>
+      <choice value="*">All</choice>
+      <default>All</default>
+    </input>
+    <input type="dropdown" token="source2" searchWhenChanged="true">
+      <label>Source2</label>
+      <choice value="source2">Yes</choice>
+      <choice value="NULL">No</choice>
+      <choice value="*">All</choice>
+      <default>All</default>
+    </input>
+    <input type="dropdown" token="source3" searchWhenChanged="true">
+      <label>Source3</label>
+      <choice value="source3">Yes</choice>
+      <choice value="NULL">No</choice>
+      <choice value="*">All</choice>
+      <default>All</default>
+    </input>
+    <input type="time" token="timerange" searchWhenChanged="true">
+      <label>Time range any source</label>
+      <default>
+        <earliest>-30d@d</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Gap Analysis Summary</title>
+      <table>
+        <search>
+          <query>| inputlookup hosts_lookup
+| fillnull value="NULL" 
+| eval coverage = if(match(source1_last_inventoried, "NULL"), "Missing Source 1", "source1") 
+| stats count by coverage 
+| search coverage=Missing* 
+| append 
+    [| inputlookup hosts_lookup
+    | fillnull value="NULL" 
+    | eval coverage = if(match(source2_last_inventoried, "NULL"), "Missing Source 2", "source2") 
+    | stats count by coverage 
+    | search coverage=Missing*] 
+| append 
+    [| inputlookup hosts_lookup
+    | fillnull value="NULL" 
+    | eval coverage = if(match(source3_last_inventoried, "NULL"), "Missing Source 3", "source3") 
+    | stats count by coverage 
+    | search coverage=Missing*] 
+| sort coverage asc
+| append 
+    [| inputlookup hosts_lookup
+    |eval coverage="Total Assets"
+    |stats count by coverage]</query>
+          <earliest>-15m</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Total Assets Inventoried Across All Sources (filtered)</title>
+      <single>
+        <search base="hosts_lookup">
+          <query>
+            | search source1=$source1$ source2=$source2$ source3=$source3$ 
+            | eval cutoff_time = relative_time(now(), "$timerange.earliest$")
+            | eval last_inventoried_epoch = strptime(last_inventoried, "%Y-%m-%d %H:%M")
+            | where last_inventoried_epoch &gt; cutoff_time
+            | stats count</query>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="colorMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x53a051", "0x0877a6", "0xf8be34", "0xf1813f", "0xdc4e41"]</option>
+        <option name="rangeValues">[0,30,70,100]</option>
+        <option name="showSparkline">1</option>
+        <option name="showTrendIndicator">1</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+        <option name="trendColorInterpretation">standard</option>
+        <option name="trendDisplayMode">absolute</option>
+        <option name="unitPosition">after</option>
+        <option name="useColors">0</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Asset Records</title>
+      <table>
+        <search base="hosts_lookup">
+          <query>
+          | search source1=$source1$ source2=$source2$ source3=$source3$ 
+          | eval cutoff_time = relative_time(now(), "$timerange.earliest$")
+          | eval last_inventoried_epoch = strptime(last_inventoried, "%Y-%m-%d %H:%M")
+          | where last_inventoried_epoch &gt; cutoff_time
+          | table ip*, first_inventoried, last_inventoried, *last_inventoried</query>
+        </search>
+        <option name="count">20</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="percentagesRow">false</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+</form>

@@ -3,7 +3,9 @@
   <description></description>
   <row>
     <panel>
-      <html>
+      <html><h2>See the latest at <a href="https://github.com/nasa/Oversight/blob/main/TA-oversight/README.md">our Github repository</a></h2>
+      <h3>OVERSIGHT - Hardware and software asset inventory solution for Continuous Diagnostics and Mitigation (CDM).</h3><p></p>
+      <h4>Copyright © 2020 United States Government as represented by the Administrator of the National Aeronautics and Space Administration.  All Other Rights Reserved.</h4>
   <div>
           <img src="/static/app/TA-oversight/README.png"/>
         </div>

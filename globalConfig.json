@@ -356,7 +356,7 @@
                     }, 
                     {
                         "field": "cron", 
-                        "label": "Cron for savedsearch"
+                        "label": "Cron"
                     }
                 ], 
                 "actions": [
@@ -549,10 +549,10 @@
                             "defaultValue": true
                         }, 
                         {
-                            "label": "Aggreation Fields", 
+                            "label": "Aggregation Fields", 
                             "required": false, 
                             "field": "aggregation_fields", 
-                            "help": "comma seperated fieldname list to aggregate into hosts_lookup", 
+                            "help": "comma separated fieldname list to aggregate into hosts_lookup", 
                             "type": "text", 
                             "validators": [
                                 {
@@ -566,12 +566,12 @@
                         {
                             "field": "replicate", 
                             "label": "Replicate", 
-                            "help": "replicate to IDX tier for automatic lookups", 
+                            "help": "enable collection replication for this source", 
                             "type": "checkbox", 
                             "required": false
                         }, 
                         {
-                            "label": "Cron for saved search schedule", 
+                            "label": "Cron for aggregation schedule", 
                             "validators": [
                                 {
                                     "minLength": 0, 
@@ -581,7 +581,7 @@
                                 }
                             ], 
                             "field": "cron", 
-                            "help": "Seperate each element by a space", 
+                            "help": "Separate each element by a space", 
                             "type": "text", 
                             "required": true, 
                             "defaultValue": "0 23 * * *"
@@ -595,9 +595,9 @@
     }, 
     "meta": {
         "name": "TA-oversight", 
-        "version": "2.3.5", 
+        "version": "1.0.0", 
         "apiVersion": "3.0.0", 
-        "displayName": "Oversight TA", 
+        "displayName": "Oversight", 
         "restRoot": "TA_oversight"
     }
 }

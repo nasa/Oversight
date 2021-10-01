@@ -106,10 +106,10 @@ class OversightScript:
                 self.run_id, self.SCRIPT_NAME
             )
         )
-        self.write_cache = []
+        self.write_cache = {}  # dict of lists; write buffer
         self.params = {}
         self.app_settings = {}
-        self.aggregation_cache = {}
+        self.aggregation_cache = {}  # local copy of kvstore data
         self.source_name = "None"
 
     def setup(self, service, app_settings):
@@ -363,14 +363,16 @@ class OversightScript:
             "run_id={} input={} method=write_kvstore_batch status=enter write_catch_size={} collection_name={}".format(
                 self.run_id,
                 self.source_name,
-                str(len(self.write_cache)),
+                str(len(self.write_cache[collection_name])),
                 str(collection_name),
             )
         )
         try:
             if not documents:
-                self.service.kvstore[collection_name].data.batch_save(*self.write_cache)
-                self.write_cache = []
+                self.service.kvstore[collection_name].data.batch_save(
+                    *self.write_cache[collection_name]
+                )
+                self.write_cache[collection_name] = []
             else:
                 self.service.kvstore[collection_name].data.batch_save(*documents)
 
@@ -390,70 +392,65 @@ class OversightScript:
             )
         self.logger.debug(
             "run_id={} input={} method=write_kvstore_batch status=exit write_cache_size={}".format(
-                self.run_id, self.source_name, str(len(self.write_cache))
+                self.run_id,
+                self.source_name,
+                str(len(self.write_cache[collection_name])),
             )
         )
 
-    def handle_cached_write(self, records=None, force=False):
+    def handle_cached_write(self, collection_name, records=None, force=False):
         """implement kvstore batch saving to improve efficiency.
         If records is None, consider it a request to flush and write the current cache, no matter the size.
 
-        @param records:     list of dicts, dict, or None; the record(s) to be written
+        @param records:         list of dicts, dict, or None; the record(s) to be written
+        @param collection_name: string, name of kvstore to cache and write to
+        @param force:           bool, if True, must write all.  Implicit if records=None.
         """
-        if self.write_cache is None:
-            self.write_cache = []
+        if (
+            collection_name not in self.write_cache
+            or self.write_cache[collection_name] is None
+        ):
+            self.write_cache[collection_name] = []
 
         if not records:
-            sample_event = None
-        elif isinstance(records, list) and len(records) > 0:
-            sample_event = records[0]
-        elif isinstance(records, dict) and len(records) > 1:
-            sample_key = list(records.keys())[0]
-            sample_event = records[sample_key]
-        else:
-            sample_event = records
+            force = True
 
-        record_len = len(records) if isinstance(records, list) else 1
-        self.logger.debug(
-            "run_id={} input={} method=handle_cached_write status=executing records_size={} sample_record={} existing_cache_size={}".format(
-                self.run_id,
-                self.source_name,
-                str(record_len),
-                str(sample_event),
-                str(len(self.write_cache)),
-            )
-        )
-
-        if records is None and len(self.write_cache) == 0:
+        if records is None and len(self.write_cache[collection_name]) == 0:
             return
 
-        if records is None and len(self.write_cache) > self.kvstore_max_batch:
+        if (
+            records is None
+            and len(self.write_cache[collection_name]) > self.kvstore_max_batch
+        ):
             ## cached too much data previously, whoops!
             overflow = []
-            overflow_count = len(self.write_cache) - self.kvstore_max_batch
+            overflow_count = (
+                len(self.write_cache[collection_name]) - self.kvstore_max_batch
+            )
 
             while overflow_count > 0:
-                overflow.append(self.write_cache.pop(-1))
+                overflow.append(self.write_cache[collection_name].pop(-1))
                 overflow_count -= 1
                 time.sleep(0.01)
-            self.write_kvstore_batch(self.AGGREGATED_COLLECTION_NAME)
-            self.write_cache = copy.deepcopy(overflow)
-            self.write_kvstore_batch(self.AGGREGATED_COLLECTION_NAME)
+            self.write_kvstore_batch(collection_name)
+            if len(overflow) > 0:
+                self.write_cache[collection_name] = copy.deepcopy(overflow)
+                self.write_kvstore_batch(collection_name)
 
         elif (
             records is None
-            and len(self.write_cache) <= self.kvstore_max_batch
+            and len(self.write_cache[collection_name]) <= self.kvstore_max_batch
             and force
         ):
             ## flush cache
-            self.write_kvstore_batch(self.AGGREGATED_COLLECTION_NAME)
+            self.write_kvstore_batch(collection_name)
 
         elif records:
 
             # first add the record into the cache
 
             if isinstance(records, list):
-                self.write_cache.extend(copy.deepcopy(records))
+                self.write_cache[collection_name].extend(copy.deepcopy(records))
                 self.logger.debug(
                     "run_id={} script={} input={} method=handle_cached_write extended records into write_cache".format(
                         self.run_id, self.SCRIPT_NAME, self.source_name
@@ -462,7 +459,17 @@ class OversightScript:
                 records = None
 
             elif isinstance(records, dict):
-                self.write_cache.append(copy.deepcopy(records))
+                self.write_cache[collection_name].append(
+                    copy.deepcopy(json.dumps(records))
+                )
+                records = None
+                self.logger.debug(
+                    "run_id={} script={} input={} method=handle_cached_write appending records into write_cache".format(
+                        self.run_id, self.SCRIPT_NAME, self.source_name
+                    )
+                )
+            elif isinstance(records, str):
+                self.write_cache[collection_name].append(copy.deepcopy(records))
                 records = None
                 self.logger.debug(
                     "run_id={} script={} input={} method=handle_cached_write appending records into write_cache".format(
@@ -477,56 +484,14 @@ class OversightScript:
                     )
                 )
 
-            # determine if we should write cache
-            record_len = str(len(records)) if records else "0"
-            self.logger.debug(
-                "run_id={} script={} input={} method=handle_write_cache status=draining_records records_size={} existing_cache_size={}".format(
-                    self.run_id,
-                    self.SCRIPT_NAME,
-                    self.source_name,
-                    record_len,
-                    str(len(self.write_cache)),
-                )
-            )
-            if len(self.write_cache) > self.kvstore_max_batch:
-                overflow = []
-                overflow_count = len(self.write_cache) - self.kvstore_max_batch
-
-                while overflow_count > 0:
-
-                    overflow.append(self.write_cache.pop(-1))
-                    if len(overflow) == self.kvstore_max_batch:
-                        self.logger.debug(
-                            "run_id={} script={} input={} method=handle_write_cache status=writing_drain overflow_size={} existing_cache_size={}".format(
-                                self.run_id,
-                                self.SCRIPT_NAME,
-                                self.source_name,
-                                str(len(overflow)),
-                                str(len(self.write_cache or 0)),
-                            )
-                        )
-                        self.write_kvstore_batch(
-                            self.AGGREGATED_COLLECTION_NAME, overflow
-                        )
-                        overflow = []
-
-                    overflow_count -= 1
-
-                if self.write_cache:
-                    self.write_kvstore_batch(self.AGGREGATED_COLLECTION_NAME)
-                if overflow:
-                    self.write_cache = copy.deepcopy(overflow)
-                    self.write_kvstore_batch(self.AGGREGATED_COLLECTION_NAME)
-
-            elif len(self.write_cache) <= self.kvstore_max_batch and force:
-                self.write_kvstore_batch(self.AGGREGATED_COLLECTION_NAME)
-
+            ## recursive call
+            self.handle_cached_write(collection_name, force=force)
         self.logger.debug(
             "run_id={} script={} input={} method=handle_write_cache status=exit existing_cache_size={}".format(
                 self.run_id,
                 self.SCRIPT_NAME,
                 self.source_name,
-                str(len(self.write_cache)),
+                str(len(self.write_cache[collection_name])),
             )
         )
 
@@ -573,6 +538,7 @@ class OversightScript:
     def expire_all_records_for_key(self, event, purge_mode=False):
         """
         look at every _last_inventoried data source and mark expired those component data source records.
+        However the record updates are now written now but cached.
         EX: bigfix_last_inventoried is not null for our host_row, so mark expired host from bigfix lookup.
 
         @param event:    dict, the existing kvstore record
@@ -585,6 +551,7 @@ class OversightScript:
         for source in data_sources:
 
             try:
+                # make sure we can connect to the kvstore
                 self.collection_svc = self.service.kvstore[source]
             except KeyError as error:
                 self.logger.warning(
@@ -638,9 +605,12 @@ class OversightScript:
                         "_key": host_key,
                     }
                 )
+                # get the original record in the kvstore
                 record = self.collection_svc.data.query(query=query_key)
                 if record:
                     record = record[0]
+
+                    # set expired = timestamp
                     record.update(
                         {
                             "expired": datetime.today().strftime(
@@ -650,24 +620,30 @@ class OversightScript:
                             )
                         }
                     )
-                    query_update = json.dumps(record)
-                    try:
-                        self.collection_svc.data.update(host_key, query_update)
+                    self.logger.debug(
+                        "run_id={} script={} method=expire_all_records_for_key status=updating record={}".format(
+                            self.run_id, self.SCRIPT_NAME, str(record)
+                        )
+                    )
 
-                    except binding.HTTPError as error:
-                        self.logger.warning(
-                            "run_id={} method=expire_all_records_for_key Unable to read kvstore={} for expiry job, error={} skipping data source.".format(
-                                self.run_id, str(source), str(error)
+                    # append event to write_cache for the kvstore
+                    if source in self.write_cache:
+                        if isinstance(self.write_cache[source], list):
+                            self.write_cache[source].append(record)
+
+                        elif self.write_cache[source] is None:
+                            self.write_cache[source] = []
+                            self.write_cache[source].append(record)
+
+                        else:
+                            self.logger.warning(
+                                "run_id={} script={} method=expire_all_records_for_key status=unable_to_cache_write key={}".format(
+                                    self.run_id, self.SCRIPT_NAME, str(query_key)
+                                )
                             )
-                        )
-                        continue
-                    except KeyError as error:
-                        self.logger.warning(
-                            "run_id={} method=expire_all_records_for_key Unable to read kvstore={} for expiry job, error={} skipping data source.".format(
-                                self.run_id, str(source), str(error)
-                            )
-                        )
-                        continue
+                    else:
+                        self.write_cache[source] = []
+                        self.write_cache[source].append(record)
                 else:
                     self.logger.warning(
                         "run_id={} method=expire_all_records_for_key Unable to delete record host_key={} from data_source={}".format(

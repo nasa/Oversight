@@ -5,6 +5,7 @@ APP_NAME = "TA-oversight"
 BUILD_OUTPUT_BIN = "output/TA-oversight/bin"
 import copy
 import uuid
+import json
 
 
 class mock_splunk_service(object):
@@ -13,7 +14,7 @@ class mock_splunk_service(object):
         self.namespace = {"app": app_name, "sharing": None, "user": None}
         self.kvstore = {}
         for collection in collections:
-            self.kvstore[collection] = mock_kvstore()
+            self.kvstore[collection] = mock_kvstore(collection)
 
         # needed for InventoryUpdater.setup_attributes()
         # and batch writing
@@ -29,16 +30,18 @@ class mock_splunk_service(object):
     ## needed for input_module_oversight::get_collection()
     def load_mock_saved_searches(self, data):
         self.saved_searches = data
-    
+
     def load_mock_transforms(self, data):
         self.confs["transforms"] = data
-    
+
     def load_mock_macros(self, data):
         self.confs["macros"] = data
-    
-    def load_mock_collections(self, data):
-        self.kvstore = data
 
+    def load_mock_collection(self, collection, data):
+        if collection not in self.kvstore:
+            self.kvstore[collection] = mock_kvstore(collection, data)
+        else:
+            self.kvstore[collection].data = mock_kvstore_data(data)
 
 class mock_service_inputs(object):
     def __init__(self):
@@ -58,14 +61,8 @@ class mock_input_item(object):
         self.name = name
 
 
-class mock_kvstore(object):
-    def __init__(self):
-        super(mock_kvstore, self).__init__()
-        self.data = mock_kvstore_data([])
-
-
 class mock_kvstore_data(object):
-    def __init__(self, data):
+    def __init__(self, data=[]):
         super(mock_kvstore_data, self).__init__()
         self.data = data
 
@@ -75,6 +72,9 @@ class mock_kvstore_data(object):
     def batch_save(self, *payload):
         input = iter(copy.deepcopy(payload))
         for document in input:
+            if isinstance(document, str):
+                document = json.loads(document)
+
             print("trying to save {}:{}".format(str(type(document)), str(document)))
             if not document.get("_key"):
                 document["_key"] = str(uuid.uuid4()).replace("-", "")
@@ -86,6 +86,12 @@ class mock_kvstore_data(object):
                 self.data.extend([tmp])
             else:
                 self.data.extend([document])
+
+class mock_kvstore(object):
+    def __init__(self, name, data=[]):
+        super(mock_kvstore, self).__init__()
+        self.name = name
+        self.data = mock_kvstore_data(data)
 
 
 class mock_arg(object):
@@ -100,6 +106,7 @@ class mock_scheme(object):
     def __init__(self):
         super(mock_scheme, self).__init__()
         self.arguments = []
+
 
 class mock_definition(object):
     def __init__(self, data):

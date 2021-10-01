@@ -46,7 +46,7 @@ def test_obj():
 test_data = [
     (
         {
-            "name": "bigfix",
+            "name": "mgmt1",
             "source_expression": "index=foo",
             "id_field": "ip",
             "cron": "1 1 * * *",
@@ -66,14 +66,14 @@ def test_rest_handler_validate_input(input):
 
 test_data = [
     (
-        {"name": "bigfix", "id_field": "ip", "cron": "1 1 * * *"}
+        {"name": "mgmt1", "id_field": "ip", "cron": "1 1 * * *"}
     ),  # missing source_expression
     (
-        {"name": "bigfix", "source_expression": "index=foo", "cron": "1 1 * * *"}
+        {"name": "mgmt1", "source_expression": "index=foo", "cron": "1 1 * * *"}
     ),  # missing id_field
     (
         {
-            "name": "bigfix",
+            "name": "mgmt1",
             "source_expression": "index=foo",
             "id_field": "ip",
             "cron": "1 1 ***",
@@ -81,7 +81,7 @@ test_data = [
     ),  # cron syntax should have spaces
     (
         {
-            "name": "bigfix",
+            "name": "mgmt1",
             "source_expression": "index=foo",
             "id_field": "ip",
             "inventory_filter": "where foo<5",
@@ -90,17 +90,17 @@ test_data = [
     ),  # inventory_filter but not inventory_source
     (
         {
-            "name": "bigfix",
+            "name": "mgmt1",
             "source_expression": "index=foo",
             "id_field": "ip",
             "enrichment_expression": " eval foo=5",
             "cron": "1 1 * * *",
         }
     ),  # enrichment_expression but no enrichment_fields
-    ({"name": "bigfix", "id_field": "ip", "source_expression": "index=foo"}),
+    ({"name": "mgmt1", "id_field": "ip", "source_expression": "index=foo"}),
     (  # aggregation_fields but not inventory_source
         {
-            "name": "bigfix",
+            "name": "mgmt1",
             "source_expression": "index=foo",
             "id_field": "ip",
             "cron": "1 1 * * *",
@@ -109,7 +109,7 @@ test_data = [
     ),
     (  # invalid cron expression
         {
-            "name": "bigfix",
+            "name": "mgmt1",
             "source_expression": "index=foo",
             "id_field": "ip",
             "cron": "1 0 ** *",

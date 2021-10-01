@@ -200,7 +200,6 @@ class InventoryExpirator(OversightScript):
         payload = json.dumps(row)
         collection.data.update(key, payload)
 
-
     def strip_expiring_keys_from_mvkeys(self, expired_hosts, active_hosts):
         """
             Strip expiring key from any record VISIBLE_MVKEY_FIELD.
@@ -324,7 +323,6 @@ class InventoryExpirator(OversightScript):
         """
 
         output = []
-        done = False
         search = None
 
         if self.EXPIRATION_EXPRESSION:
@@ -335,31 +333,36 @@ class InventoryExpirator(OversightScript):
                 "preview": False,
                 "output_mode": "json",
             }
-            search = """
-            | inputlookup {}
+            search = """| inputlookup {}
             | {} """.format(
                 self.AGGREGATED_LOOKUP_NAME, self.EXPIRATION_EXPRESSION
             )
+            self.logger.debug(
+                "run_id={} script={} method=get_expiration_expression_results search={}".format(
+                    self.run_id, self.SCRIPT_NAME, search
+                )
+            )
             expired = self.service.jobs.export(search, **search_kwargs)
-            while not done:
-                for item in expired:
-                    if item:
-                        record = json.loads(item.decode("utf-8"))
-                    else:
-                        continue
 
-                    if "result" in record:
-                        key_match = record["result"].get(self.VISIBLE_KEY_FIELD)
-                        if key_match:
-                            output.append(key_match)
-                        self.logger.debug(
-                            "expire_inventory matched for expiration record dict: {}".format(
-                                str(key_match)
-                            )
+            for item in expired:
+                if item:
+                    record = json.loads(item.decode("utf-8"))
+                else:
+                    continue
+
+                if "result" in record:
+                    key_match = record["result"].get(self.VISIBLE_KEY_FIELD)
+                    if key_match:
+                        output.append(key_match)
+                    self.logger.debug(
+                        "expire_inventory matched for expiration record dict: {}".format(
+                            str(key_match)
                         )
+                    )
 
-                    if "lastrow" in record:
-                        done = True
+                if "lastrow" in record:
+                    break
+
         self.logger.debug(
             "run_id={} script={} method=get_expiration_expression_results status=executing expiration_search={} matching_records={}".format(
                 self.run_id, self.SCRIPT_NAME, str(search), str(output)
@@ -564,32 +567,57 @@ class InventoryExpirator(OversightScript):
         if expired_hosts:
 
             for key, host_row in iteritems(expired_hosts):
-                hidden_key = host_row.get("_key") or host_row.get(
-                    self.VISIBLE_KEY_FIELD
-                )
                 self.logger.info(
                     "run_id={} expiring key={} from source={}".format(
                         self.run_id, str(key), str(collection_svc.name)
                     )
                 )
-                self.mark_expired(hidden_key, host_row, collection_svc)
+                host_row[self.EXPIRED_FIELD] = datetime.today().strftime(
+                    self.app_settings["additional_parameters"]["time_format"]
+                )
 
                 ## scan remaining lookup tables to purge host from
                 self.expire_all_records_for_key(host_row)
 
+            # now we write the expired records to the kvstore
+            expired_records = [
+                record for key, record in iteritems(expired_hosts) if record
+            ]
+            self.handle_cached_write(
+                self.AGGREGATED_COLLECTION_NAME, records=expired_records
+            )
+            self.logger.info(
+                "run_id={} script={} method=write_expired_records status=complete expired_record_count={}".format(
+                    self.run_id, self.SCRIPT_NAME, str(len(expired_records))
+                )
+            )
+
         if modified_hosts:
 
             for key, host_row in iteritems(modified_hosts):
-                hidden_key = host_row.get("_key") or host_row.get(
-                    self.VISIBLE_KEY_FIELD
-                )
                 self.logger.info(
                     "run_id={} updating mvkey for ={} from source={}".format(
                         self.run_id, str(key), str(collection_svc.name)
                     )
                 )
                 payload = json.dumps(host_row)
-                collection_svc.data.update(hidden_key, payload)
+
+                # cache record for batch writing
+                self.handle_cached_write(
+                    self.AGGREGATED_COLLECTION_NAME, records=payload
+                )
+
+        for collection_name in self.write_cache.keys():
+            if len(self.write_cache[collection_name]) > 0:
+                self.logger.debug(
+                    "run_id={} script={} status=writing_cache collection={} record_count={}".format(
+                        self.run_id,
+                        self.SCRIPT_NAME,
+                        str(collection_name),
+                        str(len(self.write_cache[collection_name])),
+                    )
+                )
+                self.handle_cached_write(collection_name, force=True)
 
         self.logger.info(
             "run_id={} status:completed expired_hosts_count={} modified_hosts_count={} with updated mvkey".format(
