@@ -93,7 +93,7 @@ class TASetup(object):
             return output_list
 
     def wait_for_oversight_setup(self):
-        search = """ search index=_internal sourcetype=oversight:log name=bigfix status=completed earliest=-5m@m """
+        search = """ search index=_internal sourcetype=oversight:log name=mgmt2 status=completed earliest=-5m@m """
         result = self.get_blocking_search_results(search)
         assert result is not None
 
@@ -168,7 +168,7 @@ def splunk_setup(splunk):
         "source_fields": "log_level",
         "aggregation_fields": "log_level",
     }
-    bigfix_settings = {
+    mgmt2_settings = {
         "cron": "0 23 * * *",
         "id_field": "ip",
         "mv_id_field": "ip_addresses",
@@ -224,11 +224,11 @@ def splunk_setup(splunk):
             name="syslog", kind="oversight", **syslog_settings
         )
 
-    if "bigfix" in ta_setup.service.inputs:
-        ta_setup.service.inputs["bigfix"].update(**bigfix_settings)
+    if "mgmt2" in ta_setup.service.inputs:
+        ta_setup.service.inputs["mgmt2"].update(**mgmt2_settings)
     else:
         ta_setup.service.inputs.create(
-            name="bigfix", kind="oversight", **bigfix_settings
+            name="mgmt2", kind="oversight", **mgmt2_settings
         )
     time.sleep(10)
 
@@ -236,10 +236,10 @@ def splunk_setup(splunk):
 
     # ta_setup.service.kvstore.create("hosts_lookup")
 
-    assert "bigfix" in ta_setup.service.inputs
-    assert ta_setup.service.inputs["bigfix"]["id_field"] == "ip"
-    assert "bigfix_lookup" in ta_setup.service.confs["transforms"]
-    assert "bigfix_collection" in ta_setup.service.kvstore
+    assert "mgmt2" in ta_setup.service.inputs
+    assert ta_setup.service.inputs["mgmt2"]["id_field"] == "ip"
+    assert "mgmt2_lookup" in ta_setup.service.confs["transforms"]
+    assert "mgmt2_collection" in ta_setup.service.kvstore
     print("Returning splunk setup to test...")
     return ta_setup
 
@@ -265,8 +265,8 @@ def test_multi_key_single_record_update_doesnt_change_recordcount(splunk_setup):
             ip_addresses=split("1.1.1.1,2.2.2.2", ","), computer_name="system1" ]
     | eval expired="false"
     | table _key,ip,last_inventoried,ip_addresses computer_name expired
-    | outputlookup bigfix_lookup key_field=_key
-    | sendalert update_inventory param.source_name=bigfix""".format(
+    | outputlookup mgmt2_lookup key_field=_key
+    | sendalert update_inventory param.source_name=mgmt2""".format(
         timestamp1, timestamp1
     )
     load_dataset1 = splunk_setup.get_blocking_search_results(search)
@@ -282,15 +282,15 @@ def test_multi_key_single_record_update_doesnt_change_recordcount(splunk_setup):
             ip_addresses=split("1.1.1.1,2.2.2.2", ","), computer_name="system1" ]
     | eval expired="false"        
     | table _key,ip,last_inventoried,ip_addresses computer_name expired
-    | outputlookup bigfix_lookup key_field=_key
-    | sendalert update_inventory param.source_name=bigfix""".format(
+    | outputlookup mgmt2_lookup key_field=_key
+    | sendalert update_inventory param.source_name=mgmt2""".format(
         timestamp2, timestamp2
     )
 
     load_dataset2 = splunk_setup.get_blocking_search_results(search)
     result = splunk_setup.get_blocking_search_results("|inputlookup hosts_lookup", "ip")
     assert len(result) == 2
-    splunk_setup.clean_lookup("bigfix_lookup", "hosts_lookup")
+    splunk_setup.clean_lookup("mgmt2_lookup", "hosts_lookup")
 
 
 def test_single_key_after_multi_key_doesnt_change_recordcount(splunk_setup):
@@ -307,8 +307,8 @@ def test_single_key_after_multi_key_doesnt_change_recordcount(splunk_setup):
             ip_addresses=split("1.1.1.1,2.2.2.2", ","), computer_name="system1" ]
     | eval expired="false"            
     | table _key,ip,last_inventoried,ip_addresses computer_name expired
-    | outputlookup bigfix_lookup key_field=_key
-    | sendalert update_inventory param.source_name=bigfix""".format(
+    | outputlookup mgmt2_lookup key_field=_key
+    | sendalert update_inventory param.source_name=mgmt2""".format(
         timestamp1, timestamp1
     )
     load_dataset1 = splunk_setup.get_blocking_search_results(search)
@@ -329,7 +329,7 @@ def test_single_key_after_multi_key_doesnt_change_recordcount(splunk_setup):
     load_dataset2 = splunk_setup.get_blocking_search_results(search)
     result = splunk_setup.get_blocking_search_results("|inputlookup hosts_lookup", "ip")
     assert len(result) == 2
-    splunk_setup.clean_lookup("bigfix_lookup", "hosts_lookup", "syslog_lookup")
+    splunk_setup.clean_lookup("mgmt2_lookup", "hosts_lookup", "syslog_lookup")
 
 
 def test_multi_key_after_two_single_keys_combines_records(splunk_setup):
@@ -338,7 +338,7 @@ def test_multi_key_after_two_single_keys_combines_records(splunk_setup):
     # and -> | dedup ip_addresses == 1 aggregated unique host
 
     # teardown prior
-    splunk_setup.clean_lookup("syslog_lookup", "bigfix_lookup", "hosts_lookup")
+    splunk_setup.clean_lookup("syslog_lookup", "mgmt2_lookup", "hosts_lookup")
 
     timestamp1 = datetime.now().strftime("%Y-%m-%d %H:%M")
     timestamp2 = (datetime.now() + timedelta(minutes=10)).strftime("%Y-%m-%d %H:%M")
@@ -371,8 +371,8 @@ def test_multi_key_after_two_single_keys_combines_records(splunk_setup):
             ip_addresses=split("1.1.1.1,2.2.2.2", ","), computer_name="system1" ]
     | eval expired="false"
     | table _key,ip,last_inventoried,ip_addresses computer_name expired
-    | outputlookup bigfix_lookup key_field=_key
-    | sendalert update_inventory param.source_name=bigfix""".format(
+    | outputlookup mgmt2_lookup key_field=_key
+    | sendalert update_inventory param.source_name=mgmt2""".format(
         timestamp2, timestamp2
     )
     load_dataset2 = splunk_setup.get_blocking_search_results(search)
@@ -384,7 +384,7 @@ def test_multi_key_after_two_single_keys_combines_records(splunk_setup):
     print(unique_hosts_results)
     assert len(unique_hosts_results) == 1
 
-    splunk_setup.clean_lookup("syslog_lookup", "bigfix_lookup", "hosts_lookup")
+    splunk_setup.clean_lookup("syslog_lookup", "mgmt2_lookup", "hosts_lookup")
 
 
 def test_single_key_single_record_update(splunk_setup):
@@ -392,7 +392,7 @@ def test_single_key_single_record_update(splunk_setup):
     # test that default value of _key is automatically assigned when mv_key is None
 
     # teardown prior
-    splunk_setup.clean_lookup("syslog_lookup", "bigfix_lookup", "hosts_lookup")
+    splunk_setup.clean_lookup("syslog_lookup", "mgmt2_lookup", "hosts_lookup")
 
     timestamp1 = datetime.now().strftime("%Y-%m-%d %H:%M")
     timestamp2 = (datetime.now() + timedelta(minutes=3)).strftime("%Y-%m-%d %H:%M")
@@ -401,8 +401,8 @@ def test_single_key_single_record_update(splunk_setup):
     | eval _key="1.1.1.1", ip="1.1.1.1", last_inventoried="{}", 
             computer_name="system1", dns_name="system1.test.to", expired="false" 
     | table _key, ip, last_inventoried, computer_name, dns_name, ip_addresses expired
-    | outputlookup bigfix_lookup key_field=_key
-    | sendalert update_inventory param.source_name=bigfix""".format(
+    | outputlookup mgmt2_lookup key_field=_key
+    | sendalert update_inventory param.source_name=mgmt2""".format(
         timestamp1
     )
 
@@ -418,7 +418,7 @@ def test_single_key_single_record_update(splunk_setup):
         "computer_name": "system1",
         "dns_name": "system1.test.to",
         "ip_addresses": "1.1.1.1",  # because ip_addresses is mv_key it gets a default value!
-        "bigfix_last_inventoried": timestamp1,
+        "mgmt2_last_inventoried": timestamp1,
     }
     for item in tested_result:
         assert tested_result[item] == result.get(item)
@@ -429,8 +429,8 @@ def test_single_key_single_record_update(splunk_setup):
     | eval _key="1.1.1.1", ip="1.1.1.1", last_inventoried="{}", 
             computer_name="system1.5", ip_addresses=split("1.1.1.1,2.2.2.2", ","), expired="false"
     | table _key, ip, last_inventoried, computer_name, dns_name, ip_addresses expired
-    | outputlookup bigfix_lookup key_field=_key
-    | sendalert update_inventory param.source_name=bigfix""".format(
+    | outputlookup mgmt2_lookup key_field=_key
+    | sendalert update_inventory param.source_name=mgmt2""".format(
         timestamp2
     )
 
@@ -446,7 +446,7 @@ def test_single_key_single_record_update(splunk_setup):
         "computer_name": "system1.5",
         "dns_name": None,  # currently failiing TODO
         "ip_addresses": ["1.1.1.1", "2.2.2.2"],
-        "bigfix_last_inventoried": timestamp2,
+        "mgmt2_last_inventoried": timestamp2,
         "expired": "false",
     }
     print(result)
@@ -455,7 +455,7 @@ def test_single_key_single_record_update(splunk_setup):
             assert set(tested_result[item]) == set(result.get(item))
         else:
             assert tested_result[item] == result.get(item)
-    splunk_setup.clean_lookup("bigfix_lookup", "hosts_lookup")
+    splunk_setup.clean_lookup("mgmt2_lookup", "hosts_lookup")
 
 
 def test_single_key_aggregation_fields_correct(splunk_setup):
@@ -463,7 +463,7 @@ def test_single_key_aggregation_fields_correct(splunk_setup):
     # test that present aggregation fields are updated
 
     # teardown any prior
-    splunk_setup.clean_lookup("bigfix_lookup", "hosts_lookup")
+    splunk_setup.clean_lookup("mgmt2_lookup", "hosts_lookup")
 
     # Load dataset1
     timestamp1 = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -474,8 +474,8 @@ def test_single_key_aggregation_fields_correct(splunk_setup):
     | eval _key="1.1.1.1", ip="1.1.1.1", last_inventoried="{}", 
             computer_name="system1", dns_name="system1.test.to", expired="false"
     | table _key, ip, last_inventoried, computer_name, dns_name, ip_addresses expired
-    | outputlookup bigfix_lookup key_field=_key
-    | sendalert update_inventory param.source_name=bigfix""".format(
+    | outputlookup mgmt2_lookup key_field=_key
+    | sendalert update_inventory param.source_name=mgmt2""".format(
         timestamp1
     )
 
@@ -495,8 +495,8 @@ def test_single_key_aggregation_fields_correct(splunk_setup):
     | eval _key="1.1.1.1", ip="1.1.1.1", last_inventoried="{}", 
             computer_name="system1.5", ip_addresses=split("1.1.1.1,2.2.2.2", ","), expired="false"
     | table _key, ip, last_inventoried, computer_name, dns_name, ip_addresses expired
-    | outputlookup bigfix_lookup key_field=_key
-    | sendalert update_inventory param.source_name=bigfix""".format(
+    | outputlookup mgmt2_lookup key_field=_key
+    | sendalert update_inventory param.source_name=mgmt2""".format(
         timestamp2
     )
 
@@ -518,8 +518,8 @@ def test_single_key_aggregation_fields_correct(splunk_setup):
             computer_name="system1.5", ip_addresses=split("1.1.1.1,2.2.2.2", ","),
             dns_name="system1.5.test.io", expired="false"
     | table _key, ip, last_inventoried, computer_name, dns_name, ip_addresses, expired
-    | outputlookup bigfix_lookup key_field=_key
-    | sendalert update_inventory param.source_name=bigfix""".format(
+    | outputlookup mgmt2_lookup key_field=_key
+    | sendalert update_inventory param.source_name=mgmt2""".format(
         timestamp3
     )
 
@@ -533,7 +533,7 @@ def test_single_key_aggregation_fields_correct(splunk_setup):
     for item in tested_result:
         assert tested_result[item] == result.get(item)
 
-    splunk_setup.clean_lookup("bigfix_lookup", "hosts_lookup")
+    splunk_setup.clean_lookup("mgmt2_lookup", "hosts_lookup")
 
 
 def test_aggregation_field_from_different_source_not_overwritten(splunk_setup):
@@ -541,15 +541,15 @@ def test_aggregation_field_from_different_source_not_overwritten(splunk_setup):
     timestamp2 = (datetime.now() + timedelta(minutes=-3)).strftime("%Y-%m-%d %H:%M")
 
     # teardown from prior
-    splunk_setup.clean_lookup("bigfix_lookup", "hosts_lookup")
+    splunk_setup.clean_lookup("mgmt2_lookup", "hosts_lookup")
 
     # Load and aggregate first dataset
     record1 = """
         | makeresults 
         | eval _key="1.1.1.1", asset_group="default", ip="1.1.1.1", last_inventoried="{}",
             computer_name="system1.6", expired="false"
-        | outputlookup bigfix_lookup key_field=_key
-        | sendalert update_inventory param.source_name=bigfix
+        | outputlookup mgmt2_lookup key_field=_key
+        | sendalert update_inventory param.source_name=mgmt2
         """.format(
         timestamp1
     )
@@ -561,7 +561,7 @@ def test_aggregation_field_from_different_source_not_overwritten(splunk_setup):
     ## assert app_setting last_inventoried_fieldname == "last_inventoried"
     assert len(results) == 1
     results = results[0]
-    assert "bigfix_last_inventoried" in results
+    assert "mgmt2_last_inventoried" in results
     for item in tested_result:
         assert tested_result[item] == results.get(item)
 
@@ -587,7 +587,7 @@ def test_aggregation_field_from_different_source_not_overwritten(splunk_setup):
     ## assert app_setting last_inventoried_fieldname == "last_inventoried"
     assert len(results) == 1
     results = results[0]
-    assert "bigfix_last_inventoried" in results and "syslog_last_inventoried" in results
+    assert "mgmt2_last_inventoried" in results and "syslog_last_inventoried" in results
     for item in tested_result:
         assert tested_result[item] == results.get(item)
 
@@ -613,12 +613,12 @@ def test_aggregation_field_from_different_source_not_overwritten(splunk_setup):
     ## assert app_setting last_inventoried_fieldname == "last_inventoried"
     assert len(results) == 1
     results = results[0]
-    assert "bigfix_last_inventoried" in results and "syslog_last_inventoried" in results
+    assert "mgmt2_last_inventoried" in results and "syslog_last_inventoried" in results
 
     for item in tested_result:
         assert tested_result[item] == results.get(item)
 
-    splunk_setup.clean_lookup("syslog_lookup", "bigfix_lookup", "hosts_lookup")
+    splunk_setup.clean_lookup("syslog_lookup", "mgmt2_lookup", "hosts_lookup")
 
 
 def test_dont_update_last_inventoried(splunk_setup):
@@ -626,7 +626,7 @@ def test_dont_update_last_inventoried(splunk_setup):
     # source_last_inventoried will be updated but not last_inventoried because the new value would be older than the current value
 
     # teardown from prior
-    splunk_setup.clean_lookup("syslog_lookup", "bigfix_lookup", "hosts_lookup")
+    splunk_setup.clean_lookup("syslog_lookup", "mgmt2_lookup", "hosts_lookup")
 
     # init test data and run alert action
     now = datetime.now()
@@ -636,8 +636,8 @@ def test_dont_update_last_inventoried(splunk_setup):
     submit_prior_record = splunk_setup.get_blocking_search_results(
         """| makeresults 
         | eval _key="1.1.1.1", asset_group="default", ip="1.1.1.1", last_inventoried="{}", expired="false"
-        | outputlookup bigfix_lookup key_field=_key
-        | sendalert update_inventory param.source_name=bigfix
+        | outputlookup mgmt2_lookup key_field=_key
+        | sendalert update_inventory param.source_name=mgmt2
         """.format(
             timestamp1
         )
@@ -676,19 +676,19 @@ def test_dont_update_last_inventoried(splunk_setup):
     assert prior_data.get("syslog_last_inventoried") == None
 
     # cleanup
-    splunk_setup.clean_lookup("hosts_lookup", "syslog_lookup", "bigfix_lookup")
+    splunk_setup.clean_lookup("hosts_lookup", "syslog_lookup", "mgmt2_lookup")
 
 
 def test_update_inventory_sucessive_calls_aggregation(splunk_setup):
-    # add an initial dataset to bigfix_lookup, then call update_inventory to aggregate it
+    # add an initial dataset to mgmt2_lookup, then call update_inventory to aggregate it
 
     # prior test teardown cleanup
     splunk_setup.clean_lookup(
-        "bigfix_lookup", "syslog_lookup", "hosts_lookup", "bigfix_lookup"
+        "mgmt2_lookup", "syslog_lookup", "hosts_lookup", "mgmt2_lookup"
     )
 
     dt = datetime.now()
-    inventoried_bigfix1 = dt.strftime("%Y-%m-%d %H:%M")
+    inventoried_mgmt21 = dt.strftime("%Y-%m-%d %H:%M")
     search = """ | makeresults
     | eval _key="1.1.1.1", ip="1.1.1.1", last_inventoried="{}", 
                 ip_addresses=split("1.1.1.1,2.2.2.2", ","), computer_name="system1"
@@ -702,9 +702,9 @@ def test_update_inventory_sucessive_calls_aggregation(splunk_setup):
             ip_addresses=split("3.3.3.3", ","), computer_name="system3" ]
     | eval expired="false"
     | table _key,ip,last_inventoried,ip_addresses computer_name expired
-    | outputlookup bigfix_lookup 
-    | sendalert update_inventory param.source_name=bigfix""".format(
-        inventoried_bigfix1, inventoried_bigfix1, inventoried_bigfix1
+    | outputlookup mgmt2_lookup 
+    | sendalert update_inventory param.source_name=mgmt2""".format(
+        inventoried_mgmt21, inventoried_mgmt21, inventoried_mgmt21
     )
     load_dataset1 = splunk_setup.get_blocking_search_results(search)
     result = splunk_setup.get_blocking_search_results("|inputlookup hosts_lookup", "ip")
@@ -713,18 +713,18 @@ def test_update_inventory_sucessive_calls_aggregation(splunk_setup):
     assert result is not None
     assert len(result) == 3
     pp(copy.deepcopy(result))
-    assert result["1.1.1.1"]["last_inventoried"] == inventoried_bigfix1
-    assert result["1.1.1.1"]["first_inventoried"] == inventoried_bigfix1
+    assert result["1.1.1.1"]["last_inventoried"] == inventoried_mgmt21
+    assert result["1.1.1.1"]["first_inventoried"] == inventoried_mgmt21
 
-    assert result["2.2.2.2"]["last_inventoried"] == inventoried_bigfix1
-    assert result["2.2.2.2"]["first_inventoried"] == inventoried_bigfix1
+    assert result["2.2.2.2"]["last_inventoried"] == inventoried_mgmt21
+    assert result["2.2.2.2"]["first_inventoried"] == inventoried_mgmt21
 
-    assert result["3.3.3.3"]["last_inventoried"] == inventoried_bigfix1
-    assert result["3.3.3.3"]["first_inventoried"] == inventoried_bigfix1
+    assert result["3.3.3.3"]["last_inventoried"] == inventoried_mgmt21
+    assert result["3.3.3.3"]["first_inventoried"] == inventoried_mgmt21
 
-    # add 2nd dataset to bigfix_lookup, then call update_inventory to aggregate new results
+    # add 2nd dataset to mgmt2_lookup, then call update_inventory to aggregate new results
     dt = datetime.now() + timedelta(minutes=3)
-    inventoried_bigfix2 = dt.strftime("%Y-%m-%d %H:%M")
+    inventoried_mgmt22 = dt.strftime("%Y-%m-%d %H:%M")
     search = """
     | makeresults 
     | eval _key="1.1.1.1", ip="1.1.1.1", last_inventoried="{}", 
@@ -739,9 +739,9 @@ def test_update_inventory_sucessive_calls_aggregation(splunk_setup):
             ip_addresses="3.3.3.3", computer_name="system3" ]
     | eval expired="false"
     | table _key,ip,last_inventoried,ip_addresses computer_name expired
-    | outputlookup bigfix_lookup key_field=_key
-    | sendalert update_inventory param.source_name=bigfix """.format(
-        inventoried_bigfix2, inventoried_bigfix2, inventoried_bigfix2
+    | outputlookup mgmt2_lookup key_field=_key
+    | sendalert update_inventory param.source_name=mgmt2 """.format(
+        inventoried_mgmt22, inventoried_mgmt22, inventoried_mgmt22
     )
     result = splunk_setup.get_blocking_search_results(search)
     assert len(result) == 3
@@ -755,21 +755,21 @@ def test_update_inventory_sucessive_calls_aggregation(splunk_setup):
     assert len(result) == 4
     pp(
         {
-            "inventoried_bigfix1": inventoried_bigfix1,
-            "inventoried_bigfix2": inventoried_bigfix2,
+            "inventoried_mgmt21": inventoried_mgmt21,
+            "inventoried_mgmt22": inventoried_mgmt22,
         }
     )
-    assert result["1.1.1.1"]["last_inventoried"] == inventoried_bigfix2
-    assert result["1.1.1.1"]["first_inventoried"] == inventoried_bigfix1
+    assert result["1.1.1.1"]["last_inventoried"] == inventoried_mgmt22
+    assert result["1.1.1.1"]["first_inventoried"] == inventoried_mgmt21
 
-    assert result["2.2.2.2"]["last_inventoried"] == inventoried_bigfix1
-    assert result["2.2.2.2"]["first_inventoried"] == inventoried_bigfix1
+    assert result["2.2.2.2"]["last_inventoried"] == inventoried_mgmt21
+    assert result["2.2.2.2"]["first_inventoried"] == inventoried_mgmt21
 
-    assert result["3.3.3.3"]["last_inventoried"] == inventoried_bigfix2
-    assert result["3.3.3.3"]["first_inventoried"] == inventoried_bigfix1
+    assert result["3.3.3.3"]["last_inventoried"] == inventoried_mgmt22
+    assert result["3.3.3.3"]["first_inventoried"] == inventoried_mgmt21
 
-    assert result["4.4.4.4"]["last_inventoried"] == inventoried_bigfix2
-    assert result["4.4.4.4"]["first_inventoried"] == inventoried_bigfix2
+    assert result["4.4.4.4"]["last_inventoried"] == inventoried_mgmt22
+    assert result["4.4.4.4"]["first_inventoried"] == inventoried_mgmt22
 
     # aggregate from syslog source
     dt = datetime.now() + timedelta(minutes=6)
@@ -796,27 +796,27 @@ def test_update_inventory_sucessive_calls_aggregation(splunk_setup):
     assert len(result) == 4
     pp(
         {
-            "inventoried_bigfix1": inventoried_bigfix1,
-            "inventoried_bigfix2": inventoried_bigfix2,
+            "inventoried_mgmt21": inventoried_mgmt21,
+            "inventoried_mgmt22": inventoried_mgmt22,
             "inventoried_syslog1": inventoried_syslog1,
         }
     )
 
     assert result["1.1.1.1"]["last_inventoried"] == inventoried_syslog1
-    assert result["1.1.1.1"]["first_inventoried"] == inventoried_bigfix1
+    assert result["1.1.1.1"]["first_inventoried"] == inventoried_mgmt21
 
-    assert result["2.2.2.2"]["last_inventoried"] == inventoried_bigfix1
-    assert result["2.2.2.2"]["first_inventoried"] == inventoried_bigfix1
+    assert result["2.2.2.2"]["last_inventoried"] == inventoried_mgmt21
+    assert result["2.2.2.2"]["first_inventoried"] == inventoried_mgmt21
 
     assert result["3.3.3.3"]["last_inventoried"] == inventoried_syslog1
-    assert result["3.3.3.3"]["first_inventoried"] == inventoried_bigfix1
+    assert result["3.3.3.3"]["first_inventoried"] == inventoried_mgmt21
 
-    assert result["4.4.4.4"]["last_inventoried"] == inventoried_bigfix2
-    assert result["4.4.4.4"]["first_inventoried"] == inventoried_bigfix2
+    assert result["4.4.4.4"]["last_inventoried"] == inventoried_mgmt22
+    assert result["4.4.4.4"]["first_inventoried"] == inventoried_mgmt22
 
-    # aggregate another bigfix_lookup dataset in
+    # aggregate another mgmt2_lookup dataset in
     dt = datetime.now() + timedelta(minutes=9)
-    inventoried_bigfix3 = dt.strftime("%Y-%m-%d %H:%M")
+    inventoried_mgmt23 = dt.strftime("%Y-%m-%d %H:%M")
     search = """
     | makeresults
     | eval _key="1.1.1.1", ip="1.1.1.1", last_inventoried="{}", 
@@ -835,12 +835,12 @@ def test_update_inventory_sucessive_calls_aggregation(splunk_setup):
             ip_addresses="3.3.3.3", computer_name="system3" ]
     | eval expired="false"
     | table _key,ip,last_inventoried,ip_addresses computer_name expired
-    |outputlookup bigfix_lookup
-    |sendalert update_inventory param.source_name=bigfix""".format(
-        inventoried_bigfix3,
-        inventoried_bigfix3,
-        inventoried_bigfix3,
-        inventoried_bigfix3,
+    |outputlookup mgmt2_lookup
+    |sendalert update_inventory param.source_name=mgmt2""".format(
+        inventoried_mgmt23,
+        inventoried_mgmt23,
+        inventoried_mgmt23,
+        inventoried_mgmt23,
     )
     result = splunk_setup.get_blocking_search_results(search, "_key")
     assert len(result) == 4
@@ -850,34 +850,34 @@ def test_update_inventory_sucessive_calls_aggregation(splunk_setup):
     assert len(result) == 5
     pp(
         {
-            "inventoried_bigfix1": inventoried_bigfix1,
-            "inventoried_bigfix2": inventoried_bigfix2,
+            "inventoried_mgmt21": inventoried_mgmt21,
+            "inventoried_mgmt22": inventoried_mgmt22,
             "inventoried_syslog1": inventoried_syslog1,
-            "inventoried_bigfix3": inventoried_bigfix3,
+            "inventoried_mgmt23": inventoried_mgmt23,
         }
     )
 
-    assert result["1.1.1.1"]["last_inventoried"] == inventoried_bigfix3
-    assert result["1.1.1.1"]["first_inventoried"] == inventoried_bigfix1
+    assert result["1.1.1.1"]["last_inventoried"] == inventoried_mgmt23
+    assert result["1.1.1.1"]["first_inventoried"] == inventoried_mgmt21
 
-    assert result["2.2.2.2"]["last_inventoried"] == inventoried_bigfix1
-    assert result["2.2.2.2"]["first_inventoried"] == inventoried_bigfix1
+    assert result["2.2.2.2"]["last_inventoried"] == inventoried_mgmt21
+    assert result["2.2.2.2"]["first_inventoried"] == inventoried_mgmt21
 
-    assert result["3.3.3.3"]["last_inventoried"] == inventoried_bigfix3
-    assert result["3.3.3.3"]["first_inventoried"] == inventoried_bigfix1
+    assert result["3.3.3.3"]["last_inventoried"] == inventoried_mgmt23
+    assert result["3.3.3.3"]["first_inventoried"] == inventoried_mgmt21
 
-    assert result["4.4.4.4"]["last_inventoried"] == inventoried_bigfix3
-    assert result["4.4.4.4"]["first_inventoried"] == inventoried_bigfix2
+    assert result["4.4.4.4"]["last_inventoried"] == inventoried_mgmt23
+    assert result["4.4.4.4"]["first_inventoried"] == inventoried_mgmt22
 
-    assert result["5.5.5.5"]["last_inventoried"] == inventoried_bigfix3
-    assert result["5.5.5.5"]["first_inventoried"] == inventoried_bigfix3
+    assert result["5.5.5.5"]["last_inventoried"] == inventoried_mgmt23
+    assert result["5.5.5.5"]["first_inventoried"] == inventoried_mgmt23
 
-    splunk_setup.clean_lookup("bigfix_lookup", "syslog_lookup", "hosts_lookup")
+    splunk_setup.clean_lookup("mgmt2_lookup", "syslog_lookup", "hosts_lookup")
 
 
 def test_cleanup(splunk_setup):
     """can be manually invoked if needed to clean up test data after failures"""
-    splunk_setup.clean_lookup("bigfix_lookup", "syslog_lookup", "hosts_lookup")
+    splunk_setup.clean_lookup("mgmt2_lookup", "syslog_lookup", "hosts_lookup")
     pass
 
 

@@ -187,6 +187,17 @@ test_data = [
         },
         "`source_expression_macro_name` | `eval_last_seen` | `sort_dedup(old_id)` | `set_key(old_id)` | `source_filter_macro_name` | `set_not_expired` | table `fields_macro_name` | `outputlookup(transforms_name)`",
     ),
+    (  # test case supported generating_command
+        {
+            "source_expression_macro_name": "source_expression_macro_name",
+            "enrichment_expression_macro_name": "enrichment_expression_macro_name",
+            "original_id_field": "old_id",
+            "fields_macro_name": "fields_macro_name",
+            "transforms_name": "transforms_name",
+            "supported_generating_command": True,
+        },
+        "| `source_expression_macro_name` | `eval_last_inventoried` | `enrichment_expression_macro_name` | `sort_dedup(old_id)` | `set_key(old_id)` | `set_not_expired` | table `fields_macro_name` | `outputlookup(transforms_name)`",
+    ),
 ]
 
 
@@ -729,7 +740,7 @@ test_data = [
     (mock_splunk_service.load_mock_saved_searches, "savedsearch foo", "savedsearches"),
     (mock_splunk_service.load_mock_transforms, "transform foo", "transforms"),
     (mock_splunk_service.load_mock_macros, "macro bar", "macros"),
-    (mock_splunk_service.load_mock_collections, "kvstore one", "collections"),
+    (mock_splunk_service.load_mock_collection, ["kvstore one"], "collections"),
 ]
 
 
@@ -737,10 +748,15 @@ test_data = [
 def test_get_collection(test_obj, load_mock_method, mock_data, conf_type):
     # test setup
     test_obj.service = mock_splunk_service("TA-oversight", "hosts_lookup")
-    load_mock_method(test_obj.service, mock_data)
-
-    output = test_obj.get_collection(conf_type)
-    assert output == mock_data
+    if load_mock_method == mock_splunk_service.load_mock_collection:
+        collection_name = "test_kvstore"
+        load_mock_method(test_obj.service, collection_name, mock_data)        
+        output = test_obj.get_collection(conf_type)
+        assert output[collection_name].data.query() == mock_data
+    else:
+        load_mock_method(test_obj.service, mock_data)
+        output = test_obj.get_collection(conf_type)
+        assert output == mock_data
 
 
 def test_get_collection_with_exception(test_obj):
@@ -748,3 +764,23 @@ def test_get_collection_with_exception(test_obj):
     invalid_conf_type = "invalid_macros"
     with pytest.raises(ValueError):
         test_obj.get_collection(invalid_conf_type)
+
+
+test_data = [
+    ("|tstats count by foo", "tstats count by foo"),
+    ("| tstats count by foo", "tstats count by foo"),
+    (" |tstats count by foo", "tstats count by foo"),
+    (" | tstats count by foo", "tstats count by foo"),
+    (
+        "index=main sourcetype=log | append [|tstats count by foo]",
+        "index=main sourcetype=log | append [|tstats count by foo]",
+    ),
+    (None, None),
+    ("", ""),
+]
+
+
+@pytest.mark.parametrize("definition, expected_output", test_data)
+def test_normalize_source_expression(definition, expected_output, test_obj):
+    output = test_obj.normalize_source_expression(definition)
+    assert output == expected_output

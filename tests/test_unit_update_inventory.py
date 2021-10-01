@@ -516,50 +516,104 @@ def test_aggregate_event(
     assert output_key == expected_output_key
 
 
-def test_setup_attributes(test_obj):
-    payload = {"configuration": {"source_name": "test", "log_level": "DEBUG"}}
-    app_settings = {
-        "additional_parameters": {
-            "first_inventoried_fieldname": "first_seen",
-            "last_inventoried_fieldname": "last_seen",
-            "aggregated_collection_name": "hosts_collection",
-            "aggregated_lookup_name": "hosts_lookup",
-            "id_field_rename": None,
-            "primary_id_field": "ip",
-            "primary_mv_id_field": None,
-            "time_format": "%Y-%m-%d",
+test_data = [
+    (  # default test case
+        {
+            "additional_parameters": {
+                "first_inventoried_fieldname": "first_seen",
+                "last_inventoried_fieldname": "last_seen",
+                "aggregated_collection_name": "hosts_collection",
+                "aggregated_lookup_name": "hosts_lookup",
+                "id_field_rename": None,
+                "primary_id_field": "ip",
+                "primary_mv_id_field": None,
+                "time_format": "%Y-%m-%d",
+            },
+            "logging": {"loglevel": "ERROR"},
         },
-        "logging": {"loglevel": "ERROR"},
-    }
-    input_settings = {
-        "asset_group": None,
-        "aggregation_fields": None,
-        "id_field_rename": None,
-        "id_field": "ip",
-        "mv_id_field": None,
-    }
-    expected_attribute_values = {
-        "write_cache": [],
-        "kvstore_max_batch": 3,
-        "mv_key_field": [],
-        "mv_id_field": None,
-        "id_field": "ip",
-        "aggregation_fields": None,
-        "asset_group": "default",
-        "FIRST_INVENTORIED_FIELD": "first_seen",
-        "HIDDEN_MVKEY_FIELD": "__mv_key",
-        "AGGREGATED_COLLECTION_NAME": "hosts_collection",
-        "AGGREGATED_LOOKUP_NAME": "hosts_lookup",
-        "LAST_INVENTORIED_FIELD": "last_seen",
-        "EXPIRATION_EXPRESSION": None,
-        "aggregation_cache": {},
-        "params": {},
-        "VISIBLE_KEY_FIELD": "ip",
-        "VISIBLE_MVKEY_FIELD": None,
-        "last_checkin_source_field": "test_last_seen",
-        "source_name": "test",
-        "TIME_FORMAT": "%Y-%m-%d",
-    }
+        {
+            "asset_group": None,
+            "aggregation_fields": None,
+            "id_field_rename": None,
+            "id_field": "ip",
+            "mv_id_field": None,
+        },
+        {
+            "write_cache": {},
+            "kvstore_max_batch": 3,
+            "mv_key_field": [],
+            "mv_id_field": None,
+            "id_field": "ip",
+            "aggregation_fields": None,
+            "asset_group": "default",
+            "FIRST_INVENTORIED_FIELD": "first_seen",
+            "HIDDEN_MVKEY_FIELD": "__mv_key",
+            "AGGREGATED_COLLECTION_NAME": "hosts_collection",
+            "AGGREGATED_LOOKUP_NAME": "hosts_lookup",
+            "LAST_INVENTORIED_FIELD": "last_seen",
+            "EXPIRATION_EXPRESSION": None,
+            "aggregation_cache": {},
+            "params": {},
+            "VISIBLE_KEY_FIELD": "ip",
+            "VISIBLE_MVKEY_FIELD": None,
+            "last_checkin_source_field": "test_last_seen",
+            "source_name": "test",
+            "TIME_FORMAT": "%Y-%m-%d",
+        },
+    ),
+    (  # validate self.id_field becomes id_field_rename when present in input_settings
+        {
+            "additional_parameters": {
+                "first_inventoried_fieldname": "first_seen",
+                "last_inventoried_fieldname": "last_seen",
+                "aggregated_collection_name": "hosts_collection",
+                "aggregated_lookup_name": "hosts_lookup",
+                "id_field_rename": None,
+                "primary_id_field": "ip",
+                "primary_mv_id_field": None,
+                "time_format": "%Y-%m-%d",
+            },
+            "logging": {"loglevel": "ERROR"},
+        },
+        {
+            "asset_group": None,
+            "aggregation_fields": None,
+            "id_field_rename": "renamed_ip",
+            "id_field": "ip",
+            "mv_id_field": None,
+        },
+        {
+            "write_cache": {},
+            "kvstore_max_batch": 3,
+            "mv_key_field": [],
+            "mv_id_field": None,
+            "id_field": "renamed_ip",
+            "aggregation_fields": None,
+            "asset_group": "default",
+            "FIRST_INVENTORIED_FIELD": "first_seen",
+            "HIDDEN_MVKEY_FIELD": "__mv_key",
+            "AGGREGATED_COLLECTION_NAME": "hosts_collection",
+            "AGGREGATED_LOOKUP_NAME": "hosts_lookup",
+            "LAST_INVENTORIED_FIELD": "last_seen",
+            "EXPIRATION_EXPRESSION": None,
+            "aggregation_cache": {},
+            "params": {},
+            "VISIBLE_KEY_FIELD": "ip",
+            "VISIBLE_MVKEY_FIELD": None,
+            "last_checkin_source_field": "test_last_seen",
+            "source_name": "test",
+            "TIME_FORMAT": "%Y-%m-%d",
+        },
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "app_settings, input_settings, expected_attribute_values", test_data
+)
+def test_setup_attributes(test_obj, app_settings, input_settings, expected_attribute_values):
+    payload = {"configuration": {"source_name": "test", "log_level": "DEBUG"}}
+
     # test setup
     del test_obj.app_settings
     test_obj.service.inputs.add(payload["configuration"].get("source_name"))
@@ -574,6 +628,9 @@ def test_setup_attributes(test_obj):
     del obj_locals["logger"]
 
     print(obj_locals)
+    if not obj_locals == expected_attribute_values:
+        print("input_settings:")
+        pp(input_settings)  
     assert obj_locals == expected_attribute_values
 
 
@@ -813,48 +870,60 @@ def test_initialize_output_event(
 
 
 test_data = [
-    ({1,2}, {1,2}, None),
-    ({1,2,3}, {4}, [1,2,3,4]),
-    ({5}, {6,7,8}, [5,6,7,8]),
-    ({1,2,3}, {1,2}, [1,2,3]),
+    ({1, 2}, {1, 2}, None),
+    ({1, 2, 3}, {4}, [1, 2, 3, 4]),
+    ({5}, {6, 7, 8}, [5, 6, 7, 8]),
+    ({1, 2, 3}, {1, 2}, [1, 2, 3]),
     (None, None, None),
     ({1}, None, [1]),
-    (None, {1,2}, [1,2]),
+    (None, {1, 2}, [1, 2]),
 ]
+
+
 @pytest.mark.parametrize("current_mvkey, incoming_mvkey, expected_output", test_data)
 def test_caculate_new_mvkeys(current_mvkey, incoming_mvkey, expected_output, test_obj):
     output = test_obj.calculate_new_mvkeys(current_mvkey, incoming_mvkey)
     assert output == expected_output
 
-test_data = [
-    ( # case null-input-null-output
-        [], {}, [], []
-    ),
-    ( # case null-records-to-review-null-output
-        [], {"1.1.1.1": {"_key":"1.1.1.1", "status":"ok"}}, [], []
-    ),
-    ( # case all records ok
-        ["1", "2"], 
-        {"1": {"_key": "1", "ips": ["1", "2"]}, "2": {"_key": "2", "ips": ["1", "2"]}}, 
-        {"1": {"_key": "1", "ips": ["1", "2"]}, "2": {"_key": "2", "ips": ["1", "2"]}},
-        []
-    ),
-    (# case cached record needs updating
-        ["1", "2"], 
-        {"1": {"_key": "1", "ips": ["1", "2"]}, "2": {"_key": "2", "ips": ["1", "2"]}}, 
-        {"1": {"_key": "1", "ips": ["1"]}, "2": {"_key": "2", "ips": ["2"]}},
-        ["1", "2"]
-    ),
-    (# case phase_one  record needs updating
-        ["1", "2"], 
-        {"1": {"_key": "1", "ips": ["1"]}, "2": {"_key": "2", "ips": ["2"]}},
-        {"1": {"_key": "1", "ips": ["1", "2"]}, "2": {"_key": "2", "ips": ["1", "2"]}}, 
-        ["1", "2"]
-    )
 
+test_data = [
+    ([], {}, [], []),  # case null-input-null-output
+    (  # case null-records-to-review-null-output
+        [],
+        {"1.1.1.1": {"_key": "1.1.1.1", "status": "ok"}},
+        [],
+        [],
+    ),
+    (  # case all records ok
+        ["1", "2"],
+        {"1": {"_key": "1", "ips": ["1", "2"]}, "2": {"_key": "2", "ips": ["1", "2"]}},
+        {"1": {"_key": "1", "ips": ["1", "2"]}, "2": {"_key": "2", "ips": ["1", "2"]}},
+        [],
+    ),
+    (  # case cached record needs updating
+        ["1", "2"],
+        {"1": {"_key": "1", "ips": ["1", "2"]}, "2": {"_key": "2", "ips": ["1", "2"]}},
+        {"1": {"_key": "1", "ips": ["1"]}, "2": {"_key": "2", "ips": ["2"]}},
+        ["1", "2"],
+    ),
+    (  # case phase_one  record needs updating
+        ["1", "2"],
+        {"1": {"_key": "1", "ips": ["1"]}, "2": {"_key": "2", "ips": ["2"]}},
+        {"1": {"_key": "1", "ips": ["1", "2"]}, "2": {"_key": "2", "ips": ["1", "2"]}},
+        ["1", "2"],
+    ),
 ]
-@pytest.mark.parametrize("records_to_review, phase_one_records, aggregation_cache, expected_output", test_data)
-def test_identify_records_with_outdated_mvkeys(aggregation_cache, records_to_review, phase_one_records, expected_output, test_obj):
+
+
+@pytest.mark.parametrize(
+    "records_to_review, phase_one_records, aggregation_cache, expected_output",
+    test_data,
+)
+def test_identify_records_with_outdated_mvkeys(
+    aggregation_cache, records_to_review, phase_one_records, expected_output, test_obj
+):
     test_obj.aggregation_cache = aggregation_cache
-    output = test_obj.identify_records_with_outdated_mvkeys(records_to_review, phase_one_records)
+    output = test_obj.identify_records_with_outdated_mvkeys(
+        records_to_review, phase_one_records
+    )
     assert output == expected_output

@@ -4,4 +4,7 @@ __pycache__
 generator.lock
 output
 *.log
+checks
 .pytest_cache
+cov.xml
+report.xml

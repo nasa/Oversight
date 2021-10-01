@@ -1,10 +1,19 @@
 <nav search_view="search" color="#65A637">
 <view name="inputs" default="true" />
 <view name="configuration"/>
+<collection label="Sample Dashboards">
+  <view name="sample_overview"/>
+  <view name="sample_ingest_rates"/>
+  <view name="sample_gap_analysis"/>
+</collection>
 <view name="search" label="Search"/>
+<collection label="Utilities">
+  <view name="utils_data_dictionary"/>
+</collection>
 <collection label="Documentation">
-  <view name="about"/>>
   <view name="docs_readme"/>
   <view name="docs_userguide"/>
+  <view name="docs_search_definitions"/>
+  <view name="docs_getting_started"/>
 </collection>
 </nav>

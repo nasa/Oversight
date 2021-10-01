@@ -35,7 +35,13 @@ print(sys.path)
 
 from oversight_utils import OversightScript
 
-from tests import mock_splunk_service
+from tests import (
+    mock_arg,
+    mock_kvstore,
+    mock_kvstore_data,
+    mock_scheme,
+    mock_splunk_service,
+)
 
 ARN_PATTERN = re.compile(
     r"arn:aws:(?P<ResourceType>[^:]+):(?P<Region>[^:]+):(?P<Account>[^:]+)"
@@ -60,6 +66,7 @@ def test_obj(fs):
     }
     test_obj.app_settings = settings
     test_obj.HIDDEN_MVKEY_FIELD = "__mv_key"
+    test_obj.AGGREGATED_COLLECTION_NAME = "hosts_collection"
     test_obj.kvstore_max_batch = int(1000)
     test_obj.run_id = "1"
     test_obj.source_name = "test"
@@ -67,7 +74,8 @@ def test_obj(fs):
         test_obj.APP_NAME,
         *[settings["additional_parameters"]["aggregated_collection_name"]]
     )
-
+    test_obj.service.kvstore["hosts_collection"].data = mock_kvstore_data([])
+    assert test_obj.service.kvstore["hosts_collection"].data.query() == []
     test_obj.setup(test_obj.service, settings)
     return test_obj
 
@@ -96,11 +104,14 @@ test_data = [
 
 @pytest.mark.parametrize("kvstore_data, expected_output", test_data)
 def test_populate_local_aggregation_cache(test_obj, kvstore_data, expected_output):
-    assert (
-        test_obj.service.kvstore[test_obj.AGGREGATED_COLLECTION_NAME].data.query() == []
-    )
-    test_obj.write_cache = kvstore_data
+
     col_name = test_obj.AGGREGATED_COLLECTION_NAME
+    ## cleanup any prior tests that failed
+    test_obj.service.kvstore[col_name].data = mock_kvstore_data([])
+
+    assert test_obj.service.kvstore[col_name].data.query() == []
+
+    test_obj.write_cache[col_name] = kvstore_data
     test_obj.write_kvstore_batch(col_name)
 
     # method under test 1
@@ -110,6 +121,9 @@ def test_populate_local_aggregation_cache(test_obj, kvstore_data, expected_outpu
     # method under test 2
     output2 = test_obj.get_dict_from_records("_key", output)
     assert output2 == expected_output
+
+    ## cleanup
+    test_obj.service.kvstore[col_name].data = mock_kvstore_data()
 
 
 def test_get_cached_record(test_obj):
@@ -145,18 +159,18 @@ test_data = [
         {
             "key": "1.1.1.1",
             "last_seen": "1999-09-09",
-            "bigfix_last_seen": "1999-09-09",
+            "mgmt1_last_seen": "1999-09-09",
         },
-        ["bigfix_collection"],
+        ["mgmt1_collection"],
     ),
     ({"key": "1.1.1.1", "last_seen": "1999-09-09"}, []),
     (
         {
             "key": "account:instance:/i-111",
             "last_seen": "1999-09-09",
-            "bigfix_last_seen": "1999-09-09",
+            "mgmt1_last_seen": "1999-09-09",
         },
-        ["bigfix_collection"],
+        ["mgmt1_collection"],
     ),
     ({"key": "account:instance:/i-111", "last_seen": "1999-09-09"}, []),
 ]
@@ -214,12 +228,14 @@ test_data = [
 @pytest.mark.parametrize("write_cache, expected_output", test_data)
 def test_write_kvstore_batch(test_obj, write_cache, expected_output):
 
-    # populate internal write cache
+    # cleanup from prior or failed tests
     col_name = test_obj.AGGREGATED_COLLECTION_NAME
-    test_obj.write_cache = write_cache
-
-    # validate kvstore starts empty
+    test_obj.service.kvstore[col_name].data = mock_kvstore_data([])
     assert test_obj.service.kvstore[col_name].data.query() == []
+
+    # populate internal write cache
+
+    test_obj.write_cache[col_name] = write_cache
 
     # call method under test
     test_obj.write_kvstore_batch(col_name)
@@ -236,84 +252,109 @@ def test_write_kvstore_batch(test_obj, write_cache, expected_output):
     ) == len(expected_output)
 
     # validate that internal write cache is cleared out after writting
-    assert test_obj.write_cache == []
+    assert test_obj.write_cache[col_name] == []
+
+    # teardown
+    test_obj.service.kvstore[col_name].data = mock_kvstore_data()
 
 
 test_data = [
     # test batch smaller than max size and nothing cached
-    ([], [{"_key": "1"}], 3, 1),
+    ({}, [{"_key": "1"}], 3, 1),
     # test small cache and no additional records
-    ([{"_key": "1"}], None, 3, 1),
+    ({"hosts_collection": [{"_key": "1"}]}, None, 3, 1),
     # test batch and previous cache together smaller than max size
     (
-        [{"_key": "1"}],
+        {"hosts_collection": [{"_key": "1"}]},
         [{"_key": "2"}],
         3,
         1,
     ),
     # test no cache, batch size larger then max size
     (
-        [],
+        {},
         [{"_key": "1"}, {"_key": "2"}, {"_key": "3"}, {"_key": "4"}, {"_key": "5"}],
         3,
         2,
     ),
     # test small cache, small batch, combined larger than max size
     (
-        [{"_key": "1"}, {"_key": "2"}],
+        {"hosts_collection": [{"_key": "1"}, {"_key": "2"}]},
         [{"_key": "3"}, {"_key": "4"}],
         3,
         2,
     ),
     # test large cache, small batch
     (
-        [{"_key": "1"}, {"_key": "2"}, {"_key": "9"}],
+        {"hosts_collection": [{"_key": "1"}, {"_key": "2"}, {"_key": "9"}]},
         [{"_key": "3"}, {"_key": "4"}],
         3,
         2,
     ),
     # test large cache, large batch
     (
-        [{"_key": "1"}, {"_key": "2"}, {"_key": "9"}, {"_key": "8"}],
+        {
+            "hosts_collection": [
+                {"_key": "1"},
+                {"_key": "2"},
+                {"_key": "9"},
+                {"_key": "8"},
+            ]
+        },
         [{"_key": "3"}, {"_key": "4"}, {"_key": "7"}, {"_key": "6"}],
         3,
         4,
     ),
     # test cache None, large batch
     (
-        None,
+        {},
         [{"_key": "3"}, {"_key": "4"}, {"_key": "7"}, {"_key": "6"}],
         3,
         2,
     ),
     # test cache None, batch None
     (
-        None,
+        {},
         None,
         3,
         0,
     ),
     # test cache large, batch None
     (
-        [{"_key": "3"}, {"_key": "4"}, {"_key": "7"}, {"_key": "6"}],
+        {
+            "hosts_collection": [
+                {"_key": "3"},
+                {"_key": "4"},
+                {"_key": "7"},
+                {"_key": "6"},
+            ]
+        },
         None,
         3,
         2,
     ),
     # test cache no cache, and batch is dict by mistake
     (
-        None,
+        {},
         {"_key": "3"},
         3,
         1,
     ),
     # test edge case where limit-records_size > limit
     (
-        [],
-        [{"_key": "9"}, {"_key": "10"}, {"_key": "11"}, {"_key": "12"}, {"_key": "13"}, {"_key": "14"}, {"_key": "15"}],
+        {},
+        [
+            {"_key": "9"},
+            {"_key": "10"},
+            {"_key": "11"},
+            {"_key": "12"},
+            {"_key": "13"},
+            {"_key": "14"},
+            {"_key": "15"},
+        ],
         3,
-        3
-    )
+        3,
+    ),
 ]
 
 
@@ -329,31 +370,40 @@ def test_handle_cached_write(
     minimum_expected_writes,
     mocker,
 ):
+
+    ## cleanup any prior test
+    col_name = test_obj.AGGREGATED_COLLECTION_NAME
+    test_obj.service.load_mock_collection(col_name, [])
     # determine expected output
     expected_keys = []
     if initial_cache:
-        expected_keys += [i["_key"] for i in initial_cache]
+        for key in initial_cache:
+            expected_keys += [i["_key"] for i in initial_cache[key]]
+
     if additional_records and isinstance(additional_records, list):
         expected_keys += [i["_key"] for i in additional_records]
     elif additional_records and isinstance(additional_records, dict):
         expected_keys += [additional_records["_key"]]
 
     # object under test setup
+    col_name = test_obj.AGGREGATED_COLLECTION_NAME
     test_obj.write_cache = initial_cache
     test_obj.kvstore_max_batch = int(max_records_per_batch)
+    assert (
+        col_name in test_obj.service.kvstore
+        and test_obj.service.kvstore[col_name].data.query() == []
+    )
 
     # method under test
-    test_obj.handle_cached_write(records=additional_records, force=True)
+    test_obj.handle_cached_write(col_name, records=additional_records, force=True)
 
     # format output for evaluation against expected
-    output = test_obj.service.kvstore[test_obj.AGGREGATED_COLLECTION_NAME].data.query()
+    output = test_obj.service.kvstore[col_name].data.query()
     output_keys = [i["_key"] for i in output]
 
     assert set(output_keys) == set(expected_keys)
     assert len(output) == len(expected_keys)
 
     ## teardown
-    test_obj.service = mock_splunk_service(
-        test_obj.APP_NAME, *[test_obj.AGGREGATED_COLLECTION_NAME]
-    )
-    test_obj.write_cache = []
+    test_obj.service.kvstore[col_name].data = mock_kvstore_data()
+    test_obj.write_cache[col_name] = []

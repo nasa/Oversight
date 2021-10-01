@@ -89,7 +89,7 @@ class TASetup(object):
             return output_list
 
     def wait_for_oversight_setup(self):
-        search = """ search index=_internal sourcetype=oversight:log name=bigfix status=completed earliest=-5m@m """
+        search = """ search index=_internal sourcetype=oversight:log name=mgmt1 status=completed earliest=-5m@m """
         result = self.get_blocking_search_results(search)
         assert result is not None
 
@@ -163,7 +163,7 @@ def splunk_setup(splunk):
         "source_fields": "log_level",
         "aggregation_fields": "log_level",
     }
-    bigfix_settings = {
+    mgmt1_settings = {
         "cron": "0 23 * * *",
         "id_field": "ip",
         "mv_id_field": "ip_addresses",
@@ -182,11 +182,11 @@ def splunk_setup(splunk):
             name="syslog", kind="oversight", **syslog_settings
         )
 
-    if "bigfix" in ta_setup.service.inputs:
-        ta_setup.service.inputs["bigfix"].update(**bigfix_settings)
+    if "mgmt1" in ta_setup.service.inputs:
+        ta_setup.service.inputs["mgmt1"].update(**mgmt1_settings)
     else:
         ta_setup.service.inputs.create(
-            name="bigfix", kind="oversight", **bigfix_settings
+            name="mgmt1", kind="oversight", **mgmt1_settings
         )
     time.sleep(15)
 
@@ -307,6 +307,9 @@ def test_delete_source_lookup_records_if_expired(splunk_setup):
     active_timestamp = (datetime.now() - timedelta(days=max_age - 1)).strftime(
         timeformat
     )
+    print("max_age={} expired_timestamp={} active_timestamp={} now={}".format(
+        str(max_age), str(expired_timestamp), str(active_timestamp), str(datetime.now())
+    ))
 
     data = {
         "ip": "1.1.1.1",
@@ -335,9 +338,13 @@ def test_delete_source_lookup_records_if_expired(splunk_setup):
     ## update timestamp on record in aggregated hosts_lookup, to trigger expiration
     search = """
     | inputlookup hosts_lookup 
-    | sendalert expire_inventory"""
-
+    | sendalert expire_inventory param.log_level=DEBUG"""
+    time.sleep(5)
     data_update = splunk_setup.get_blocking_search_results(search, debug=True)
+    pp(data_update)
+    get_log = "search index=_internal sourcetype=oversight:log script=expire_inventory earliest=-60m@m | eventstats max(run_id) as most_recent_run | where run_id==most_recent_run"
+    get_log_results = splunk_setup.get_blocking_search_results(get_log)
+    pp(get_log_results)
 
     # get alert action results
     expired_aggregation = splunk_setup.get_blocking_search_results(
@@ -349,7 +356,7 @@ def test_delete_source_lookup_records_if_expired(splunk_setup):
     assert len(expired_aggregation) == 1
     assert expired_aggregation[0]["expired"] != "false"
     assert expired_aggregation[0]["syslog_last_inventoried"] is not None
-
+    time.sleep(5)
     source_results = splunk_setup.get_blocking_search_results(
         " | inputlookup syslog_lookup"
     )

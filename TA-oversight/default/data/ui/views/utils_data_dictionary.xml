@@ -1,0 +1,42 @@
+<dashboard version="1.1">
+  <label>Data Dictionary</label>
+  <row>
+    <panel>
+      <table>
+        <search>
+          <query>| makeresults 
+| eval NOTES="Click the lookup name to drilldown into a fieldsummary."
+| table NOTES</query>
+          <earliest>-15m</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <search>
+          <query>| rest splunk_server=local /servicesNS/nobody/TA-oversight/data/transforms/lookups 
+| search eai:acl.app=TA-oversight type=kvstore
+| table title, fields_array, updated</query>
+          <earliest>-15m</earliest>
+          <latest>now</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="count">100</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">row</option>
+        <option name="percentagesRow">false</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+        <drilldown>
+          <link target="_blank">search?q=%7Cinputlookup%20$click.value2$%0A%7Cfieldsummary%20maxvals=5&amp;earliest=-15m&amp;latest=now</link>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+</dashboard>

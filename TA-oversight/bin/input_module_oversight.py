@@ -13,9 +13,28 @@ from oversight_utils import log_enter_exit, OversightScript
 KNOWLEDGE_OBJECTS_WRITTEN = {
     "transforms": ["_lookup", "_lookup_all"],
     "collections": ["_collection"],
-    "macros": ["_source", "_fields", "_source_filter", "_inventory_filter", "_enrichment_expression"],
-    "saved_searches": ["_hosts", "_data"]
+    "macros": [
+        "_source",
+        "_fields",
+        "_source_filter",
+        "_inventory_filter",
+        "_enrichment_expression",
+    ],
+    "saved_searches": ["_hosts", "_data"],
 }
+
+SUPPORTED_GENERATING_COMMANDS = [
+    "metadata",
+    "loadjob",
+    "inputcsv",
+    "inputlookup",
+    "dbinspect",
+    "datamodel",
+    "pivot",
+    "tstats",
+]
+
+
 class OversightBuilder(OversightScript):
     """This class is responsible for generating the necessary Splunk Knowledge Objects for this modular input:
     * kvstore collection and transform
@@ -172,12 +191,18 @@ class OversightBuilder(OversightScript):
         last_inventoried_fieldname = (
             kwargs.get("last_inventoried_fieldname") or "last_inventoried"
         )
-        search_query = (
-            macro_string(kwargs.get("source_expression_macro_name"))
-            + " | "
-            + macro_string("eval_{}".format(last_inventoried_fieldname))
-            + " | "
-        )
+
+        search_query = macro_string(kwargs.get("source_expression_macro_name")) + " | "
+        if kwargs.get("supported_generating_command") == True:
+            search_query = "| {} | {} | ".format(
+                macro_string(kwargs.get("source_expression_macro_name")),
+                macro_string("eval_{}".format(last_inventoried_fieldname)),
+            )
+        else:
+            search_query = "{} | {} | ".format(
+                macro_string(kwargs.get("source_expression_macro_name")),
+                macro_string("eval_{}".format(last_inventoried_fieldname)),
+            )
 
         if kwargs.get("enrichment_expression_macro_name"):
             search_query += (
@@ -553,6 +578,21 @@ class OversightBuilder(OversightScript):
         )
         self.write_conf("transforms", name, args)
 
+    def normalize_source_expression(self, definition):
+        """strip any leading '|' from definition.  It will need to be prepended to the search if
+        its a generating command besides 'search'"""
+
+        if definition is None:
+            return definition
+
+        LEADING_PIPE = r"\s*\|\s*"
+
+        if re.match(LEADING_PIPE, definition):
+            # only replace first occurence
+            definition = definition.replace("|", "", 1)
+            definition = definition.strip()
+        return definition
+
 
 def validate_input(self, definition):
     """This validation occurs when the user clicks save after editing or creating new input settings.
@@ -840,9 +880,14 @@ def stream_events(self, inputs, ew):
 
         ## Define and Write macros
         source_expression_macro_name = builder.name + "_source"
-        builder.write_macro(
-            source_expression_macro_name, builder.params["source_expression"]
+        source_definition = builder.normalize_source_expression(
+            builder.params["source_expression"]
         )
+        supported_generating_command = False
+        if source_definition in SUPPORTED_GENERATING_COMMANDS:
+            supported_generating_command = True
+
+        builder.write_macro(source_expression_macro_name, source_definition)
 
         fields_macro_name = builder.name + "_fields"
         builder.write_macro(fields_macro_name, ",".join(kv_lookup_fields))
@@ -878,6 +923,7 @@ def stream_events(self, inputs, ew):
             fields_macro_name=fields_macro_name,
             transforms_name=transforms_name,
             last_inventoried_fieldname=builder.settings["last_inventoried_fieldname"],
+            supported_generating_command=supported_generating_command,
         )
         saved_search_name = builder.build_search_name()
         saved_search_args = builder.build_search_args()
