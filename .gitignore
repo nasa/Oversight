@@ -3,6 +3,7 @@ __pycache__
 .venv
 generator.lock
 output
+*.log
 checks
 .pytest_cache
 cov.xml
